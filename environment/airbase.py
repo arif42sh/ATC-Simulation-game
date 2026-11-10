@@ -105,3 +105,31 @@ class Airbase:
         self.wind_direction_deg = random.choice([90.0, 180.0, 270.0, 60.0])
         self.visibility_km = 10.0
 
+    def add_aircraft(self, aircraft: Aircraft):
+        """Registers aircraft in Hash Map, FIFO queue, and assigns an unoccupied perimeter orbit."""
+        self._arrival_seq_counter += 1
+        aircraft.arrival_seq = self._arrival_seq_counter
+
+        active_orbits = {
+            (round(ac.orbit_x, 1), round(ac.orbit_y, 1))
+            for ac in self.aircraft_fleet
+            if ac.status == FlightStatus.HOLDING
+        }
+        slot_idx = (self._arrival_seq_counter - 1) % len(self.holding_orbits)
+        for offset in range(len(self.holding_orbits)):
+            cand_idx = (self._arrival_seq_counter - 1 + offset) % len(self.holding_orbits)
+            cand_orbit = (round(self.holding_orbits[cand_idx][0], 1), round(self.holding_orbits[cand_idx][1], 1))
+            if cand_orbit not in active_orbits:
+                slot_idx = cand_idx
+                break
+
+        if abs(aircraft.x - 120.0) < 1e-3 and abs(aircraft.y - 180.0) < 1e-3:
+            sx, sy = self.spawn_points[slot_idx]
+            aircraft.x, aircraft.y = sx, sy
+        ox, oy = self.holding_orbits[slot_idx]
+        aircraft.orbit_x, aircraft.orbit_y = ox, oy
+
+        self.aircraft_fleet.append(aircraft)
+        self.aircraft_map[aircraft.flight_id] = aircraft
+        self.arrival_queue.append(aircraft.flight_id)
+
