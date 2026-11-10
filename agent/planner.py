@@ -30,3 +30,32 @@ class GoalBasedPlanner:
         self._async_lock = threading.Lock()
         self._last_async_seq: int = 0
 
+    def should_replan(self, prev_state: Dict[str, Any], curr_state: Dict[str, Any]) -> bool:
+        """
+        Event-driven trigger check (Game Improvement Sec 2):
+        Only re-plan on new arrivals, emergency changes, runway status shifts, or weather shifts.
+        """
+        if not prev_state:
+            return bool(curr_state.get("situational_metrics", {}).get("pending_count", 0) > 0)
+
+        p_met = prev_state.get("situational_metrics", {})
+        c_met = curr_state.get("situational_metrics", {})
+
+        # 1. New aircraft arrival or queue change
+        if p_met.get("pending_ids") != c_met.get("pending_ids"):
+            return True
+
+        # 2. New emergency declared
+        if c_met.get("emergency_count", 0) > p_met.get("emergency_count", 0):
+            return True
+
+        # 3. Runway availability / maintenance / occupancy status changed
+        if p_met.get("runway_signature") != c_met.get("runway_signature"):
+            return True
+
+        # 4. Weather condition changed
+        if prev_state.get("weather", {}).get("condition") != curr_state.get("weather", {}).get("condition"):
+            return True
+
+        return False
+
