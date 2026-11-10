@@ -71,3 +71,16 @@ class SkyATCGame:
     # State & Button Setup
     # -------------------------------------------------------------------------
 
+    def _switch_state(self, new_state: str):
+        self.current_state = new_state
+        self.drag_state = None
+        self._cached_global = self.db_logger.get_global_counters()
+        self._cached_prog = self.db_logger.get_level_progression()
+
+        if new_state == GameState.AI_STATS:
+            self._cached_stats = self.db_logger.get_stats_dashboard_data()
+            self.log_scroll = 0
+            self.export_toast = ""
+
+        self._rebuild_buttons()
+
