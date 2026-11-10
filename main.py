@@ -79,3 +79,17 @@ def run_headless_evaluation():
     print("=" * 80)
 
 
+def main():
+    parser = argparse.ArgumentParser(description="SkyATC AI V2 - Intelligent Runway Management Agent")
+    parser.add_argument("--headless", action="store_true", help="Run automated headless evaluation benchmark")
+    parser.add_argument("--level", type=int, default=None, help="Start directly at level 1-20")
+    args = parser.parse_args()
+
+    if args.headless:
+        run_headless_evaluation()
+    else:
+        run_gui_simulation(initial_level=args.level)
+
+
+if __name__ == "__main__":
+    main()
