@@ -860,3 +860,139 @@ class DisplayRenderer:
     # SCREEN 4: AI & DB STATS
     # =========================================================================
 
+    def render_ai_stats(
+        self,
+        airbase: Airbase,
+        global_stats: Dict[str, int],
+        dash_data: Dict[str, Any],
+        log_scroll: int,
+        export_toast: str,
+        mysql_ok: bool,
+        ai_ready: bool,
+    ):
+        self.screen.blit(self._terrain_cache, (0, 0))
+        self._draw_airbase_tarmac_and_runways(airbase)
+
+        dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        dim.fill((10, 18, 28, 178))
+        self.screen.blit(dim, (0, 0))
+
+        self._draw_top_hud_bar(
+            landed_count=global_stats.get("aircraft_landed", 0),
+            score_label="HI-SCORE",
+            score_val=global_stats.get("hi_score", 0),
+            mysql_ok=mysql_ok,
+            ai_ready=ai_ready,
+        )
+
+        cx = config.WINDOW_WIDTH // 2
+        stats_title = self.font_title.render("AI & DB STATS", True, config.COLOR_CYAN)
+        self.screen.blit(stats_title, stats_title.get_rect(center=(cx, 84)))
+        sub = self.font_sub.render("HISTORICAL PERFORMANCE & DATABASE RECORDS", True, config.COLOR_WHITE)
+        self.screen.blit(sub, sub.get_rect(center=(cx, 118)))
+
+        # Card 1: GENERAL MISSION STATS
+        c1 = pygame.Rect(60, 148, 590, 195)
+        pygame.draw.rect(self.screen, (18, 30, 48), c1, border_radius=10)
+        pygame.draw.rect(self.screen, config.COLOR_CYAN, c1, 2, border_radius=10)
+        self.screen.blit(self.font_header.render("GENERAL MISSION STATS", True, config.COLOR_CYAN), (c1.x + 18, c1.y + 12))
+
+        mini_stats = [
+            ("TOTAL MISSIONS:", f"{dash_data['total_missions']}", config.COLOR_WHITE, c1.x + 18, c1.y + 44),
+            ("EMERGENCIES HANDLED:", f"{dash_data['emergencies_handled']}", config.COLOR_CRITICAL_RED, c1.x + 305, c1.y + 44),
+            ("SUCCESSFUL LANDINGS:", f"{dash_data['successful_landings']} ({dash_data['landing_rate']}%)", config.COLOR_PRIMARY_GREEN, c1.x + 18, c1.y + 116),
+            ("ACCUMULATED REWARDS:", f"{dash_data['accumulated_rewards']:+d} PTS", (245, 215, 70), c1.x + 305, c1.y + 116),
+        ]
+        for label, val, col, mx, my in mini_stats:
+            box = pygame.Rect(mx, my, 268, 62)
+            pygame.draw.rect(self.screen, config.COLOR_CARD_BG, box, border_radius=6)
+            self.screen.blit(self.font_tiny.render(label, True, config.COLOR_TEXT_MUTED), (mx + 12, my + 8))
+            self.screen.blit(self.font_big_stat.render(val, True, col), (mx + 12, my + 27))
+
+        # Card 2: AI PERFORMANCE
+        c2 = pygame.Rect(675, 148, 625, 195)
+        pygame.draw.rect(self.screen, (18, 30, 48), c2, border_radius=10)
+        pygame.draw.rect(self.screen, config.COLOR_WARN_AMBER, c2, 2, border_radius=10)
+        self.screen.blit(self.font_header.render("AI PERFORMANCE", True, config.COLOR_WARN_AMBER), (c2.x + 18, c2.y + 12))
+
+        self.screen.blit(self.font_tiny.render("AI VS PLAYER ACCURACY", True, config.COLOR_TEXT_MUTED), (c2.x + 225, c2.y + 38))
+        for label, pct, col, by in [
+            ("PLAYER", dash_data["player_accuracy"], config.COLOR_PRIMARY_GREEN, c2.y + 58),
+            ("AI", dash_data["ai_accuracy"], config.COLOR_CYAN, c2.y + 84),
+        ]:
+            self.screen.blit(self.font_tiny.render(label, True, col), (c2.x + 20, by))
+            bar = pygame.Rect(c2.x + 82, by + 2, 470, 12)
+            pygame.draw.rect(self.screen, (32, 46, 66), bar, border_radius=5)
+            pygame.draw.rect(self.screen, col, (bar.x, bar.y, int(bar.w * min(1.0, pct / 100.0)), bar.h), border_radius=5)
+            self.screen.blit(self.font_tiny.render(f"{pct:.0f}%", True, config.COLOR_WHITE), (bar.right + 10, by))
+
+        avg_ms = float(dash_data.get("avg_ai_decision_ms", 0.0))
+        if avg_ms <= 0.0:
+            avg_ms = float(dash_data.get("avg_ai_decision_sec", 0.0)) * 1000.0
+        dec_time_str = f"{avg_ms:.1f} ms" if avg_ms < 100.0 else f"{dash_data['avg_ai_decision_sec']:.2f}s"
+
+        ai_cols = [
+            ("AI DECISION TIME:", dec_time_str, config.COLOR_WHITE, c2.x + 24),
+            ("VALIDATION REJECTIONS:", f"{dash_data['validation_rejections']} ({dash_data['validation_rejection_rate']}%)", config.COLOR_WARN_AMBER, c2.x + 220),
+            ("TIMEOUT AUTO-EXECUTE:", f"{dash_data['timeout_auto_executes']}", config.COLOR_CYAN, c2.x + 445),
+        ]
+        for lbl, val, col, ax in ai_cols:
+            self.screen.blit(self.font_tiny.render(lbl, True, config.COLOR_TEXT_MUTED), (ax, c2.y + 122))
+            self.screen.blit(self.font_big_stat.render(val, True, col), (ax, c2.y + 144))
+
+        # Card 3: DATABASE LOGS (Scrollable Table)
+        c3 = pygame.Rect(60, 362, 860, 294)
+        pygame.draw.rect(self.screen, (18, 30, 48), c3, border_radius=10)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, c3, 1, border_radius=10)
+        self.screen.blit(self.font_header.render("DATABASE LOGS", True, config.COLOR_WHITE), (c3.x + 18, c3.y + 12))
+
+        hdr = "REQ ID   FLIGHT ID    EVENT TYPE             AI SUGGESTION   RESULT        SCORE"
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BG, (c3.x + 14, c3.y + 38, c3.w - 60, 24), border_radius=4)
+        self.screen.blit(self.font_mono_sm.render(hdr, True, config.COLOR_TEXT_MUTED), (c3.x + 24, c3.y + 43))
+
+        logs = dash_data.get("recent_logs", [])
+        visible_rows = logs[log_scroll:log_scroll + 8]
+        ry = c3.y + 70
+        if not visible_rows:
+            self.screen.blit(self.font_body.render("No operational database records yet. Play a level to record telemetry.", True, config.COLOR_TEXT_DIM), (c3.x + 24, ry + 10))
+        else:
+            for row in visible_rows:
+                res = row["result"]
+                if res == "Success":
+                    r_col = config.COLOR_PRIMARY_GREEN
+                elif res == "Override":
+                    r_col = config.COLOR_WARN_AMBER
+                elif res == "Auto-Exec":
+                    r_col = config.COLOR_CYAN
+                else:
+                    r_col = config.COLOR_CRITICAL_RED
+                sc_str = f"{row['score']:+d}"
+                line = f"{row['req_id']:<8} {row['flight_id']:<12} {row['event_type']:<22} {row['ai_suggestion']:<15} {res:<13} {sc_str}"
+                self.screen.blit(self.font_mono_sm.render(line, True, r_col), (c3.x + 24, ry))
+                ry += 26
+
+        # Card 4: LEVEL COMPLETION HISTORY
+        c4 = pygame.Rect(945, 362, 355, 294)
+        pygame.draw.rect(self.screen, (18, 30, 48), c4, border_radius=10)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, c4, 1, border_radius=10)
+        self.screen.blit(self.font_header.render("LEVEL COMPLETION HISTORY", True, config.COLOR_WHITE), (c4.x + 18, c4.y + 14))
+
+        done_cnt = dash_data.get("levels_completed", 0)
+        self.screen.blit(self.font_body_bold.render(f"LEVELS COMPLETED: {done_cnt}/20", True, config.COLOR_CYAN), (c4.x + 18, c4.y + 52))
+
+        # 20-segment progress bar
+        seg_x = c4.x + 18
+        seg_w = 14
+        for idx in range(20):
+            seg_col = config.COLOR_PRIMARY_GREEN if idx < done_cnt else (38, 54, 74)
+            pygame.draw.rect(self.screen, seg_col, (seg_x + idx * 16, c4.y + 82, seg_w, 24), border_radius=2)
+
+        hi_lvl = dash_data.get("highest_completed_level", 0)
+        self.screen.blit(self.font_body_bold.render(f"HIGHEST CLEARED: Level {hi_lvl:02d}", True, (245, 215, 70)), (c4.x + 18, c4.y + 132))
+        hi_box = pygame.Rect(c4.x + 18, c4.y + 164, c4.w - 36, 68)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BG, hi_box, border_radius=8)
+        self.screen.blit(self.font_title.render(f"Level {hi_lvl:02d}", True, config.COLOR_WHITE), (hi_box.x + 20, hi_box.y + 16))
+
+        if export_toast:
+            toast_surf = self.font_small.render(export_toast, True, config.COLOR_PRIMARY_GREEN)
+            self.screen.blit(toast_surf, toast_surf.get_rect(center=(cx, 665)))
