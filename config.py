@@ -197,3 +197,68 @@ RUNWAY_LAYOUTS: Dict[int, List[Dict[str, Any]]] = {
     ],
 }
 
+# -----------------------------------------------------------------------------
+# 20-Level Progressive Structure (Report Section 6.2 & 6.4)
+# -----------------------------------------------------------------------------
+def _build_level_configs() -> Dict[int, Dict[str, Any]]:
+    levels: Dict[int, Dict[str, Any]] = {}
+    for lvl in range(1, 21):
+        if lvl <= 5:
+            tier, runways = "EASY", 2
+            idx = lvl - 1
+            total_ac = 4 + idx
+            spawn_int = 10.0 - idx * 0.5
+            emerg_ch = 0.15 + idx * 0.04
+            heavy_ch = 0.0
+            maint_ch = 0.0 if lvl < 3 else 0.10
+            wind_kts = 8.0 + idx * 1.5
+            fuel_min, fuel_max = 52.0, 92.0
+        elif lvl <= 10:
+            tier, runways = "MEDIUM", 2
+            idx = lvl - 6
+            total_ac = 7 + idx
+            spawn_int = 8.0 - idx * 0.4
+            emerg_ch = 0.28 + idx * 0.04
+            heavy_ch = 0.15
+            maint_ch = 0.18 + idx * 0.03
+            wind_kts = 14.0 + idx * 2.5
+            fuel_min, fuel_max = 38.0, 82.0
+        elif lvl <= 15:
+            tier, runways = "HARD", 3
+            idx = lvl - 11
+            total_ac = 9 + idx
+            spawn_int = 6.8 - idx * 0.3
+            emerg_ch = 0.35 + idx * 0.04
+            heavy_ch = 0.35 + idx * 0.03
+            maint_ch = 0.28 + idx * 0.03
+            wind_kts = 20.0 + idx * 3.0
+            fuel_min, fuel_max = 30.0, 74.0
+        else:
+            tier, runways = "EXPERT", 4
+            idx = lvl - 16
+            total_ac = 12 + idx
+            spawn_int = 5.6 - idx * 0.25
+            emerg_ch = 0.45 + idx * 0.04
+            heavy_ch = 0.40 + idx * 0.02
+            maint_ch = 0.35 + idx * 0.04
+            wind_kts = 26.0 + idx * 3.5
+            fuel_min, fuel_max = 26.0, 70.0
+
+        levels[lvl] = {
+            "level_id": lvl,
+            "difficulty": tier,
+            "runway_count": runways,
+            "total_aircraft": total_ac,
+            "spawn_interval": round(max(2.8, spawn_int), 2),
+            "emergency_chance": round(min(0.65, emerg_ch), 2),
+            "heavy_chance": round(min(0.65, heavy_ch), 2),
+            "maintenance_chance": round(min(0.55, maint_ch), 2),
+            "wind_speed_kts": round(wind_kts, 1),
+            "fuel_range": (fuel_min, fuel_max),
+            "max_concurrent": min(6 + (lvl // 4), 10),
+        }
+    return levels
+
+
+LEVEL_CONFIGS: Dict[int, Dict[str, Any]] = _build_level_configs()
+
