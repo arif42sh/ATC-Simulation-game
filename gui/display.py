@@ -676,3 +676,15 @@ class DisplayRenderer:
         pygame.draw.rect(self.screen, (14, 24, 38), bg, border_radius=3)
         self.screen.blit(lbl, (bg.x + 4, bg.y + 1))
 
+    def _draw_event_banner(self, banner: Dict[str, Any]):
+        bw, bh = 480, 44
+        bx = (config.CANVAS_WIDTH - bw) // 2
+        by = 62
+        b_type = banner.get("type", "NORMAL")
+        border = config.COLOR_CRITICAL_RED if b_type == "EMERGENCY" else config.COLOR_CYAN
+        bg = (64, 18, 24) if b_type == "EMERGENCY" else (16, 30, 48)
+        pygame.draw.rect(self.screen, bg, (bx, by, bw, bh), border_radius=6)
+        pygame.draw.rect(self.screen, border, (bx, by, bw, bh), 2, border_radius=6)
+        self.screen.blit(self.font_small.render(banner["title"], True, border), (bx + 14, by + 5))
+        self.screen.blit(self.font_tiny.render(banner["message"], True, config.COLOR_WHITE), (bx + 14, by + 23))
+
