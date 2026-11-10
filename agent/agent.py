@@ -297,3 +297,35 @@ class ATCAgent:
 
         return False, f"Could not assign {flight_id} to {runway_id}."
 
+    def _record_landing_rewards(self, ac: Aircraft, runway_id: str, decision_type: str, is_override: bool):
+        """Scores executed landing clearance & records feedback to DB."""
+        self.stats["landings"] += 1
+        self.reward_system.evaluate_action("CORRECT_RUNWAY_ASSIGNMENT", ac.flight_id, f"Assigned {runway_id}")
+        self.reward_system.evaluate_action("SUCCESSFUL_LANDING", ac.flight_id, f"Cleared to {runway_id}")
+
+        if ac.is_emergency():
+            self.stats["emergencies_handled"] += 1
+            self.reward_system.evaluate_action("EMERGENCY_HANDLED", ac.flight_id, ac.emergency_type)
+
+        if ac.waiting_time <= config.WAITING_REWARD_THRESHOLD:
+            self.reward_system.evaluate_action("REDUCED_WAITING_TIME", ac.flight_id, f"Wait {int(ac.waiting_time)}s")
+
+        if all(r.status != RunwayStatus.AVAILABLE for r in self.airbase.runways.values()):
+            self.reward_system.evaluate_action("EFFICIENT_UTILIZATION", ac.flight_id, "All active runways utilized")
+
+        if self.db_logger:
+            dec_id = self._last_decision_id_by_flight.get(ac.flight_id)
+            self.db_logger.log_player_decision(dec_id, ac.db_aircraft_id, ac.flight_id, runway_id, decision_type)
+            self.db_logger.log_feedback(dec_id, ac.flight_id, "VALID", "EXECUTED", f"{decision_type} -> {runway_id}")
+            self.db_logger.sync_runways(self.airbase.level_id, self.airbase.runways)
+
+    def _refresh_plan_after_action(self):
+        """Recomputes plan immediately after any execution or override."""
+        state = self.observer.observe()
+        plan = self.planner.generate_plan(state, trigger_async_llm=False)
+        self._apply_plan_to_ui_and_db(plan)
+
+    def _push_notification(self, msg: str):
+        self.notifications.append(msg)
+        if len(self.notifications) > 4:
+            self.notifications.pop(0)
