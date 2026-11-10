@@ -809,3 +809,54 @@ class DisplayRenderer:
         s = self.font_body.render("Press Pause (||) or [P] to resume airbase simulation", True, config.COLOR_TEXT_MUTED)
         self.screen.blit(s, s.get_rect(center=(box.centerx, box.y + 82)))
 
+    def _render_modal_overlay(self, modal: Dict[str, Any]):
+        """Renders Level Complete or Crash / Game Over Modal with reward breakdown."""
+        dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        dim.fill((6, 12, 20, 195))
+        self.screen.blit(dim, (0, 0))
+
+        mw, mh = 620, 440
+        mx, my = (config.WINDOW_WIDTH - mw) // 2, (config.WINDOW_HEIGHT - mh) // 2
+        m_rect = pygame.Rect(mx, my, mw, mh)
+        is_crash = modal.get("type") == "CRASH"
+        accent = config.COLOR_CRITICAL_RED if is_crash else config.COLOR_PRIMARY_GREEN
+
+        pygame.draw.rect(self.screen, config.COLOR_SIDEBAR_BG, m_rect, border_radius=12)
+        pygame.draw.rect(self.screen, accent, m_rect, 2, border_radius=12)
+
+        title = modal.get("title", "LEVEL SUMMARY")
+        self.screen.blit(self.font_title.render(title, True, accent), (mx + 28, my + 22))
+        self.screen.blit(self.font_body_bold.render(modal.get("subtitle", ""), True, config.COLOR_WHITE), (mx + 28, my + 68))
+
+        # Summary metric strip
+        stats_box = pygame.Rect(mx + 28, my + 102, mw - 56, 56)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, stats_box, border_radius=8)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, stats_box, 1, border_radius=8)
+        score = modal.get("score", 0)
+        landings = modal.get("landings", 0)
+        emerg = modal.get("emergencies", 0)
+        stat_str = f"FINAL SCORE: {score:+d} PTS   |   LANDED: {landings}   |   EMERGENCIES: {emerg}"
+        self.screen.blit(self.font_mono.render(stat_str, True, config.COLOR_CYAN), (stats_box.x + 18, stats_box.y + 18))
+
+        # Reward / Penalty Breakdown list
+        bd_rect = pygame.Rect(mx + 28, my + 170, mw - 56, 180)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, bd_rect, border_radius=8)
+        self.screen.blit(self.font_header.render("REWARD & PENALTY BREAKDOWN", True, config.COLOR_WHITE), (bd_rect.x + 14, bd_rect.y + 10))
+
+        by_event = modal.get("breakdown", {}).get("by_event", {})
+        ry = bd_rect.y + 38
+        if not by_event:
+            self.screen.blit(self.font_body.render("No reward events recorded.", True, config.COLOR_TEXT_DIM), (bd_rect.x + 14, ry))
+        else:
+            for ev_key, info in list(by_event.items())[:6]:
+                pts = info["points"]
+                col = config.COLOR_PRIMARY_GREEN if pts >= 0 else config.COLOR_CRITICAL_RED
+                label = ev_key.replace("_", " ").title()
+                self.screen.blit(self.font_body.render(f"{label} (x{info['count']})", True, config.COLOR_TEXT_MUTED), (bd_rect.x + 16, ry))
+                self.screen.blit(self.font_mono_sm.render(f"{pts:+d} PTS", True, col), (bd_rect.right - 100, ry))
+                ry += 22
+
+    # =========================================================================
+    # SCREEN 4: AI & DB STATS
+    # =========================================================================
+
