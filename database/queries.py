@@ -77,3 +77,34 @@ class DatabaseLogger:
         )
         return ac_id, req_id
 
+    def update_aircraft_outcome(self, ac_id: Optional[int], req_id: Optional[int], fuel: float, status: str, wait_sec: float):
+        if ac_id:
+            self.db.execute(
+                "UPDATE aircraft SET current_fuel = %s, aircraft_status = %s WHERE aircraft_id = %s",
+                (round(fuel, 1), status, ac_id),
+            )
+        if req_id:
+            req_status = "COMPLETED" if status == "LANDED" else ("FAILED" if status == "CRASHED" else "ACTIVE")
+            self.db.execute(
+                "UPDATE missions_requests SET waiting_time = %s, request_status = %s WHERE request_id = %s",
+                (round(wait_sec, 1), req_status, req_id),
+            )
+
+    def log_agent_decision(
+        self,
+        request_id: Optional[int],
+        flight_id: str,
+        priority: int,
+        assigned_runway: Optional[str],
+        ai_reason: str,
+        decision_source: str,
+        validation_status: str,
+        decision_time_ms: float,
+    ) -> int:
+        return self.db.execute(
+            """INSERT INTO agent_decisions
+               (request_id, flight_id, recommended_priority, assigned_runway_id, ai_reason, decision_source, validation_status, decision_time_ms)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (request_id, flight_id, priority, assigned_runway, ai_reason, decision_source, validation_status, round(decision_time_ms, 2)),
+        )
+
