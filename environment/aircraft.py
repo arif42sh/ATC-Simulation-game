@@ -256,3 +256,48 @@ class Aircraft:
                 self.status = FlightStatus.LANDED
                 self.speed = 0.0
 
+    def get_priority_score(self) -> float:
+        return self.get_priority_breakdown()["total_score"]
+
+    def get_priority_breakdown(self) -> Dict[str, Any]:
+        """Mathematical utility score breakdown synchronized with DecisionEngine."""
+        emerg_pts = 0.0
+        if self.emergency_type == EmergencyType.ENGINE_PROBLEM:
+            emerg_pts = 189.0
+        elif self.emergency_type == EmergencyType.CRITICAL_FUEL or self.fuel_level <= config.FUEL_CRITICAL_THRESHOLD:
+            emerg_pts = 175.0
+        elif self.emergency_type in (EmergencyType.BIRD_STRIKE, EmergencyType.MEDICAL):
+            emerg_pts = 147.0
+
+        fuel = round(self.fuel_level, 1)
+        wait = round(self.waiting_time, 1)
+        fuel_raw = max(0.0, 100.0 - fuel) * 1.15
+        wait_raw = min(55.0, wait * 1.4)
+        dist_raw = max(0.0, 22.0 - self.distance_nm) * 0.8
+
+        fuel_pts = round(fuel_raw, 2)
+        wait_pts = round(wait_raw, 2)
+        dist_pts = round(dist_raw, 2)
+        total = round(emerg_pts + fuel_raw + wait_raw + dist_raw, 2)
+
+        if self.emergency_type == EmergencyType.CRITICAL_FUEL:
+            tag = "CRITICAL FUEL"
+        elif self.emergency_type == EmergencyType.ENGINE_PROBLEM:
+            tag = "ENGINE PROBLEM"
+        elif self.emergency_type != EmergencyType.NONE:
+            tag = self.emergency_type.replace("_", " ")
+        elif self.fuel_level < 40.0:
+            tag = "LOW FUEL WATCH"
+        else:
+            tag = "NORMAL"
+
+        return {
+            "total_score": total,
+            "emerg_pts": emerg_pts,
+            "fuel_pts": fuel_pts,
+            "wait_pts": wait_pts,
+            "dist_pts": dist_pts,
+            "status_tag": tag,
+            "is_emergency": self.is_emergency(),
+        }
+
