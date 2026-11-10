@@ -90,3 +90,15 @@ class DatabaseManager:
         self.engine_type = "sqlite"
         print(f"[DATABASE] SQLite connected: {config.SQLITE_DB_PATH}")
 
+    def _is_v2_schema_active(self, cursor) -> bool:
+        """Checks if existing database already carries the V2 9-table schema."""
+        try:
+            cursor.execute("SELECT version FROM schema_meta LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                ver = row["version"] if isinstance(row, dict) else row[0]
+                return ver == self.SCHEMA_VERSION
+        except Exception:
+            return False
+        return False
+
