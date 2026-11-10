@@ -171,3 +171,44 @@ class DisplayRenderer:
             ai_col = config.COLOR_PRIMARY_GREEN if ai_ready else config.COLOR_CYAN
             self.screen.blit(self.font_tiny.render(ai_txt, True, ai_col), (box.x + 14, box.y + 34))
 
+    def _draw_airbase_tarmac_and_runways(
+        self,
+        airbase: Airbase,
+        hovered_rwy: Optional[str] = None,
+        drag_valid: bool = True,
+        active_ac: Optional[Aircraft] = None,
+    ):
+        """Draws the concrete airbase pad, Helipad (H), and 2-4 active runways."""
+        is_multi_runway = len(airbase.runways) >= 3
+        if is_multi_runway:
+            tarmac_pts = [
+                (165, 180), (675, 180), (695, 215), (695, 490),
+                (595, 605), (205, 605), (165, 510),
+            ]
+            hx, hy, hr, h_ring, h_font = 202, 470, 24, 19, self.font_big_stat
+        else:
+            tarmac_pts = [
+                (175, 195), (655, 195), (680, 225), (680, 420),
+                (375, 600), (205, 580), (175, 490),
+            ]
+            hx, hy, hr, h_ring, h_font = 235, 455, 32, 26, self.font_title
+
+        pygame.draw.polygon(self.screen, config.COLOR_TARMAC_BORDER, [(x + 4, y + 5) for x, y in tarmac_pts])
+        pygame.draw.polygon(self.screen, config.COLOR_TARMAC, tarmac_pts)
+        pygame.draw.polygon(self.screen, config.COLOR_TARMAC_BORDER, tarmac_pts, 2)
+
+        # Helipad (H)
+        pygame.draw.circle(self.screen, (72, 70, 66), (hx, hy), hr)
+        pygame.draw.circle(self.screen, config.COLOR_HELIPAD_RING, (hx, hy), h_ring, 3)
+        h_lbl = h_font.render("H", True, config.COLOR_HELIPAD_RING)
+        self.screen.blit(h_lbl, h_lbl.get_rect(center=(hx, hy)))
+
+        # Draw each runway cleanly along its angle
+        for rwy in airbase.runways.values():
+            self._draw_single_runway(
+                rwy,
+                is_hovered=(hovered_rwy == rwy.id),
+                drag_valid=drag_valid,
+                active_ac=active_ac,
+            )
+
