@@ -81,3 +81,35 @@ class Button:
             pygame.draw.rect(surface, (200, 180, 90), (lx, ly + 4, 10, 8), border_radius=2)
             pygame.draw.arc(surface, (200, 180, 90), (lx + 2, ly, 6, 8), 0, 3.14, 2)
 
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if not self.enabled:
+            self.is_hovered = False
+            return False
+        if event.type == pygame.MOUSEMOTION:
+            self.is_hovered = self.rect.collidepoint(event.pos)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                if self.callback:
+                    self.callback()
+                return True
+        return False
+
+
+class ActionPanel:
+    """Manages interactive buttons for the currently visible screen or modal."""
+
+    def __init__(self):
+        self.buttons: List[Button] = []
+
+    def set_buttons(self, buttons: List[Button]):
+        self.buttons = buttons
+
+    def draw(self, surface: pygame.Surface):
+        for btn in self.buttons:
+            btn.draw(surface)
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        for btn in list(self.buttons):
+            if btn.handle_event(event):
+                return True
+        return False
