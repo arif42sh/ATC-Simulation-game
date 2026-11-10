@@ -282,3 +282,51 @@ class SkyATCGame:
         self.db_logger.log_event(self.selected_level, "LEVEL_START", f"Started Level {self.selected_level:02d}")
         self._switch_state(GameState.SIMULATION)
 
+    def _return_to_menu_paused(self):
+        self.sound.play("click")
+        self.is_paused = True
+        self._switch_state(GameState.MAIN_MENU)
+
+    def _exit_modal_to_menu(self):
+        self.sound.play("click")
+        self.modal_state = None
+        self.has_active_session = False
+        self._switch_state(GameState.MAIN_MENU)
+
+    def _toggle_pause(self):
+        self.sound.play("click")
+        self.is_paused = not self.is_paused
+        self._rebuild_buttons()
+
+    def _toggle_speed(self):
+        self.sound.play("click")
+        if self.sim_speed < 0.9:
+            self.sim_speed = config.SIMULATION_SPEED_NORMAL
+        elif self.sim_speed > 1.1:
+            self.sim_speed = config.SIMULATION_SPEED_SLOW
+        else:
+            self.sim_speed = config.SIMULATION_SPEED_FAST
+        self._rebuild_buttons()
+
+    def _toggle_mute(self):
+        self.sound.toggle_mute()
+        self._rebuild_buttons()
+
+    def _toggle_override_mode(self):
+        self.sound.play("click")
+        self.override_mode = not self.override_mode
+        if self.override_mode and not self.selected_aircraft:
+            pending = self.airbase.get_ranked_pending_aircraft()
+            if pending:
+                self.selected_aircraft = pending[0]
+        self._rebuild_buttons()
+
+    def _on_accept_ai_plan(self):
+        if self.agent.accept_ai_plan():
+            self.sound.play("click")
+            self.override_mode = False
+            self.renderer.add_floating_text("AI PLAN ACCEPTED!", 480, 120, config.COLOR_PRIMARY_GREEN)
+            self._rebuild_buttons()
+        else:
+            self.sound.play("warning")
+
