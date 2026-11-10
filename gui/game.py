@@ -241,3 +241,44 @@ class SkyATCGame:
     # Button Callbacks
     # -------------------------------------------------------------------------
 
+    def _on_start_game(self):
+        self.sound.play("click")
+        next_lvl = self._cached_prog.get("max_unlocked", 1)
+        self.start_level(next_lvl)
+
+    def _on_resume_game(self):
+        if self.has_active_session:
+            self.sound.play("click")
+            self.is_paused = False
+            self._switch_state(GameState.SIMULATION)
+
+    def _on_exit(self):
+        self.is_running = False
+
+    def _select_level_tile(self, level_id: int):
+        self.sound.play("click")
+        self.selected_level = level_id
+        self._rebuild_buttons()
+
+    def _toggle_demo_unlock(self):
+        self.sound.play("click")
+        self.demo_unlock_all = not self.demo_unlock_all
+        self._rebuild_buttons()
+
+    def start_level(self, level_id: int):
+        self.selected_level = max(1, min(20, int(level_id)))
+        self.level_mgr.start_level(self.selected_level)
+        self.agent.reset_for_level(self.selected_level)
+        self.selected_aircraft = None
+        self.override_mode = False
+        self.drag_state = None
+        self.modal_state = None
+        self.is_paused = False
+        self.sim_speed = config.SIMULATION_SPEED_NORMAL
+        self.has_active_session = True
+        self._seen_emergency_ids.clear()
+        self.renderer.floating_texts.clear()
+        self.renderer.particles.clear()
+        self.db_logger.log_event(self.selected_level, "LEVEL_START", f"Started Level {self.selected_level:02d}")
+        self._switch_state(GameState.SIMULATION)
+
