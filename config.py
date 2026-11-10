@@ -81,3 +81,34 @@ AIRCRAFT_SPECS: Dict[str, Dict[str, Any]] = {
     "C17":  {"size": AircraftSize.HEAVY, "min_runway_m": 2800, "speed_kts": 150.0},
 }
 
+# -----------------------------------------------------------------------------
+# Visual Color Palette (Matching Airbase UI Mockups)
+# -----------------------------------------------------------------------------
+COLOR_GRASS_LIGHT = (67, 134, 42)
+COLOR_GRASS_DARK = (57, 120, 35)
+COLOR_CONTOUR = (43, 94, 26)
+
+COLOR_TARMAC = (164, 150, 126)
+COLOR_TARMAC_BORDER = (128, 116, 96)
+COLOR_RUNWAY_ASPHALT = (68, 66, 62)
+COLOR_RUNWAY_MARKING = (238, 240, 234)
+COLOR_HELIPAD_RING = (212, 168, 56)
+
+COLOR_TOPBAR_BG = (34, 62, 24)
+COLOR_TOPBAR_BORDER = (58, 98, 44)
+COLOR_SIDEBAR_BG = (15, 27, 45)
+COLOR_CARD_BG = (24, 41, 66)
+COLOR_CARD_DARK = (18, 32, 54)
+COLOR_CARD_BORDER = (46, 76, 114)
+
+COLOR_WHITE = (255, 255, 255)
+COLOR_TEXT_MUTED = (186, 206, 228)
+COLOR_TEXT_DIM = (128, 152, 180)
+
+COLOR_CYAN = (46, 224, 255)
+COLOR_PRIMARY_GREEN = (32, 205, 92)
+COLOR_CRITICAL_RED = (216, 48, 56)
+COLOR_WARN_AMBER = (216, 134, 28)
+COLOR_NORMAL_SLATE = (78, 106, 136)
+COLOR_PURPLE = (180, 125, 255)
+
