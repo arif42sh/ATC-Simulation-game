@@ -249,3 +249,69 @@ class TestSkyATCV2(unittest.TestCase):
         self.assertIs(crashed, starved)
         self.assertEqual(starved.status, FlightStatus.CRASHED)
 
+    def test_runway_lock_hold_release_and_compatible_hitl_gating(self):
+        """Verifies landing locks do not expire mid-rollout, HOLD frees runways, and HITL waits for compatible runways."""
+        # 1. Slow aircraft from east orbit stays locked on RWY 1 until LANDED, then releases cleanly
+        self.airbase.setup_for_level(1)
+        slow = Aircraft("BG-SLOW", model="C208", fuel_level=80.0, x=890.0, y=665.0)
+        self.airbase.add_aircraft(slow)
+        self.agent.reset_for_level(1)
+        self.assertTrue(self.airbase.authorize_landing("BG-SLOW", "RWY 1"))
+
+        elapsed = 0.0
+        while slow.status != FlightStatus.LANDED and elapsed < 65.0:
+            self.airbase.update(0.5)
+            elapsed += 0.5
+            if slow.status != FlightStatus.LANDED:
+                self.assertEqual(self.airbase.runways["RWY 1"].current_aircraft, "BG-SLOW")
+        self.assertEqual(slow.status, FlightStatus.LANDED)
+        self.assertTrue(self.airbase.runways["RWY 1"].is_available())
+
+        # 2. Manual HOLD releases occupied runway and applies EMERGENCY_DELAYED when holding an emergency
+        self.airbase.setup_for_level(1)
+        emerg = Aircraft("BG-EM1", model="B737", fuel_level=18.0, emergency_type=EmergencyType.CRITICAL_FUEL)
+        self.airbase.add_aircraft(emerg)
+        self.agent.reset_for_level(1)
+        self.agent.step(0.2)
+        self.assertTrue(self.agent.accept_ai_plan())
+        assigned_rwy = emerg.assigned_runway
+        self.assertIsNotNone(assigned_rwy)
+        ok, _ = self.agent.override_assignment("BG-EM1", "HOLD")
+        self.assertTrue(ok)
+        self.assertTrue(self.airbase.runways[assigned_rwy].is_available())
+        self.assertIn("EMERGENCY_DELAYED", [h["event_key"] for h in self.agent.reward_system.history])
+
+        # 3a. Rule 8 allows landing a small AT72 on short 1800m RWY 4 while Heavy emergency waits for Heavy runway
+        self.airbase.setup_for_level(16)
+        for rid in ("RWY 1", "RWY 2", "RWY 3"):
+            self.airbase.runways[rid].occupy(f"OCC-{rid}", duration_seconds=20.0)
+        heavy_emerg = Aircraft("BG-HVY", model="B777", fuel_level=45.0, emergency_type=EmergencyType.ENGINE_PROBLEM)
+        small = Aircraft("BG-SML", model="AT72", fuel_level=60.0)
+        self.airbase.add_aircraft(heavy_emerg)
+        self.airbase.add_aircraft(small)
+        self.agent.reset_for_level(16)
+
+        validator = PlanValidator()
+        ok_r4, issues_r4, _, code_r4 = validator.validate_plan(
+            {"assignments": [{"flight_id": "BG-SML", "action": "AUTHORIZE_LANDING", "assigned_runway": "RWY 4"}]},
+            self.agent.observer.observe(),
+        )
+        self.assertTrue(ok_r4, f"{code_r4}: {issues_r4}")
+
+        # 3b. Heavy aircraft waiting while only short 1800m RWY 4 is available does NOT spin timeout_auto_executes
+        self.airbase.setup_for_level(16)
+        for rid in ("RWY 1", "RWY 2", "RWY 3"):
+            self.airbase.runways[rid].occupy(f"OCC-{rid}", duration_seconds=25.0)
+        heavy_only = Aircraft("BG-HVY2", model="B777", fuel_level=45.0, emergency_type=EmergencyType.ENGINE_PROBLEM)
+        self.airbase.add_aircraft(heavy_only)
+        self.agent.reset_for_level(16)
+
+        for _ in range(25):
+            self.airbase.update(0.5)
+            self.agent.step(0.5)
+        self.assertGreaterEqual(heavy_only.hitl_decision_timer, 2.0)
+        self.assertEqual(self.agent.stats["timeout_auto_executes"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
