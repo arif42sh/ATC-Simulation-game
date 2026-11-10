@@ -239,3 +239,61 @@ class ATCAgent:
             self._refresh_plan_after_action()
         return executed_any
 
+    def override_assignment(self, flight_id: str, runway_id: Optional[str]) -> tuple[bool, str]:
+        """
+        Player manual override (via Drag-and-Draw path or right-panel Override selector).
+        Passes through the 9-rule PlanValidator before execution!
+        """
+        ac = self.airbase.get_aircraft(flight_id)
+        if not ac:
+            return False, f"Flight {flight_id} not found."
+
+        if runway_id is None or runway_id == "HOLD":
+            has_compat_avail = any(r.supports_aircraft(ac.min_runway_length_m) for r in self.airbase.get_available_runways())
+            if ac.is_emergency() and has_compat_avail:
+                self.reward_system.evaluate_action("EMERGENCY_DELAYED", flight_id, "Emergency flight placed on hold")
+            self.airbase.hold_aircraft(flight_id)
+            self.stats["player_overrides"] += 1
+            if self.db_logger:
+                dec_id = self._last_decision_id_by_flight.get(flight_id)
+                self.db_logger.log_player_decision(dec_id, ac.db_aircraft_id, flight_id, "HOLD", "OVERRIDE")
+                self.db_logger.sync_runways(self.airbase.level_id, self.airbase.runways)
+            self._refresh_plan_after_action()
+            return True, f"{flight_id} placed in Holding Orbit."
+
+        manual_plan = {
+            "assignments": [{
+                "flight_id": flight_id,
+                "priority": 1,
+                "assigned_runway": runway_id,
+                "action": "AUTHORIZE_LANDING",
+                "rationale": "Manual player override",
+            }]
+        }
+        current_state = self.observer.observe()
+        is_valid, issues, _, val_code = self.validator.validate_plan(manual_plan, current_state)
+
+        if not is_valid:
+            self.stats["validation_rejections"] += 1
+            reason = issues[0] if issues else f"Validation failed ({val_code})"
+            if val_code == "PRIORITY_VIOLATION":
+                penalty_key = "EMERGENCY_DELAYED"
+            elif "CONFLICT" in val_code:
+                penalty_key = "RUNWAY_CONFLICT"
+            else:
+                penalty_key = "WRONG_RUNWAY_ASSIGNMENT"
+            self.reward_system.evaluate_action(penalty_key, flight_id, reason)
+            if self.db_logger:
+                dec_id = self._last_decision_id_by_flight.get(flight_id)
+                self.db_logger.log_feedback(dec_id, flight_id, val_code, "REJECTED", reason)
+            return False, reason
+
+        if self.airbase.authorize_landing(flight_id, runway_id):
+            ac.decision_maker = "HUMAN_OVERRIDE"
+            self.stats["player_overrides"] += 1
+            self._record_landing_rewards(ac, runway_id, decision_type="OVERRIDE", is_override=True)
+            self._refresh_plan_after_action()
+            return True, f"Override Cleared: {flight_id} -> {runway_id}"
+
+        return False, f"Could not assign {flight_id} to {runway_id}."
+
