@@ -112,3 +112,88 @@ COLOR_WARN_AMBER = (216, 134, 28)
 COLOR_NORMAL_SLATE = (78, 106, 136)
 COLOR_PURPLE = (180, 125, 255)
 
+# -----------------------------------------------------------------------------
+# Runway Geometry Layouts by Runway Count (2, 3, or 4 Runways)
+# Coordinates inside Gameplay Canvas: X=0..975, Y=50..768
+# -----------------------------------------------------------------------------
+RUNWAY_LAYOUTS: Dict[int, List[Dict[str, Any]]] = {
+    2: [
+        {
+            "id": "RWY 1",
+            "name": "Runway 1 (Primary Heavy)",
+            "length_m": 3000,
+            "start": (235, 315),
+            "end": (625, 315),
+            "heading": 90,
+        },
+        {
+            "id": "RWY 2",
+            "name": "Runway 2 (Secondary)",
+            "length_m": 2400,
+            "start": (305, 535),
+            "end": (585, 365),
+            "heading": 59,
+        },
+    ],
+    3: [
+        {
+            "id": "RWY 1",
+            "name": "Runway 1 (Primary Heavy)",
+            "length_m": 3200,
+            "start": (225, 260),
+            "end": (630, 260),
+            "heading": 90,
+        },
+        {
+            "id": "RWY 2",
+            "name": "Runway 2 (Secondary Heavy)",
+            "length_m": 2800,
+            "start": (245, 395),
+            "end": (605, 360),
+            "heading": 84,
+        },
+        {
+            "id": "RWY 3",
+            "name": "Runway 3 (Regional Short)",
+            "length_m": 1900,
+            "start": (300, 545),
+            "end": (575, 445),
+            "heading": 70,
+        },
+    ],
+    4: [
+        {
+            "id": "RWY 1",
+            "name": "Runway 1 (Heavy North)",
+            "length_m": 3400,
+            "start": (220, 235),
+            "end": (635, 235),
+            "heading": 90,
+        },
+        {
+            "id": "RWY 2",
+            "name": "Runway 2 (Heavy Central)",
+            "length_m": 2800,
+            "start": (240, 330),
+            "end": (615, 330),
+            "heading": 90,
+        },
+        {
+            "id": "RWY 3",
+            "name": "Runway 3 (Medium South)",
+            "length_m": 2300,
+            "start": (260, 445),
+            "end": (590, 410),
+            "heading": 83,
+        },
+        {
+            "id": "RWY 4",
+            "name": "Runway 4 (Light Tactical)",
+            "length_m": 1800,
+            "start": (300, 555),
+            "end": (560, 515),
+            "heading": 81,
+        },
+    ],
+}
+
