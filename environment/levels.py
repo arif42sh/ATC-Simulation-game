@@ -144,3 +144,36 @@ class LevelManager:
                     3.5,
                 )
 
+    def update(self, dt: float):
+        """Advances wave spawn timers and dynamic runway/weather events."""
+        if self.active_banner:
+            self.active_banner["timer"] -= dt
+            if self.active_banner["timer"] <= 0.0:
+                self.active_banner = None
+
+        if not self.auto_spawn_enabled:
+            return
+
+        # Spawn remaining aircraft up to level target
+        active_count = len(self.airbase.get_active_aircraft())
+        if self.spawned_count < self.target_aircraft and active_count < self.level_cfg["max_concurrent"]:
+            self.spawn_timer += dt
+            if self.spawn_timer >= self.level_cfg["spawn_interval"]:
+                self.spawn_timer = 0.0
+                self.spawn_aircraft()
+
+        # Dynamic maintenance / weather shift events
+        if self.level_cfg["maintenance_chance"] > 0.0:
+            self.event_timer += dt
+            if self.event_timer >= 20.0:
+                self.event_timer = 0.0
+                if random.random() < self.level_cfg["maintenance_chance"]:
+                    self.trigger_random_runway_event()
+
+    def is_level_complete(self) -> bool:
+        """True once all target aircraft for the level have landed safely."""
+        if self.airbase.crashed_aircraft is not None:
+            return False
+        landed = len(self.airbase.flight_history)
+        active = len(self.airbase.get_active_aircraft())
+        return self.spawned_count >= self.target_aircraft and active == 0 and landed >= self.target_aircraft
