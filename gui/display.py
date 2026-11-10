@@ -416,3 +416,80 @@ class DisplayRenderer:
     # SCREEN 2: SELECT LEVEL (01 - 20 SEQUENTIAL)
     # =========================================================================
 
+    def render_level_select(
+        self,
+        airbase: Airbase,
+        global_stats: Dict[str, int],
+        progression: Dict[str, Any],
+        selected_level: int,
+        demo_unlock_all: bool,
+        mysql_ok: bool,
+        ai_ready: bool,
+    ):
+        self.screen.blit(self._terrain_cache, (0, 0))
+        self._draw_airbase_tarmac_and_runways(airbase)
+
+        dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        dim.fill((10, 18, 28, 170))
+        self.screen.blit(dim, (0, 0))
+
+        self._draw_top_hud_bar(
+            landed_count=global_stats.get("aircraft_landed", 0),
+            score_label="HI-SCORE",
+            score_val=global_stats.get("hi_score", 0),
+            mysql_ok=mysql_ok,
+            ai_ready=ai_ready,
+        )
+
+        cx = config.WINDOW_WIDTH // 2
+        t_surf = self.font_title.render("SELECT LEVEL", True, config.COLOR_CYAN)
+        self.screen.blit(t_surf, t_surf.get_rect(center=(cx, 92)))
+        s_surf = self.font_sub.render("CHOOSE YOUR AIRBASE CHALLENGE", True, config.COLOR_WHITE)
+        self.screen.blit(s_surf, s_surf.get_rect(center=(cx, 128)))
+
+        # Tier Row Labels (left of 5-column level grid)
+        tiers = [
+            ("EASY", "(2 RUNWAYS)", config.COLOR_PRIMARY_GREEN, 190),
+            ("MEDIUM", "(2 RUNWAYS)", (245, 220, 90), 280),
+            ("HARD", "(3 RUNWAYS)", config.COLOR_WARN_AMBER, 370),
+            ("EXPERT", "(4 RUNWAYS)", config.COLOR_CRITICAL_RED, 460),
+        ]
+        for label, sub_lbl, col, ry in tiers:
+            row_bg = pygame.Rect(185, ry - 8, 625, 80)
+            pygame.draw.rect(self.screen, (18, 30, 44, 210), row_bg, border_radius=10)
+            pygame.draw.rect(self.screen, (48, 72, 98), row_bg, 1, border_radius=10)
+
+            l_surf = self.font_header.render(label, True, col)
+            self.screen.blit(l_surf, (205, ry + 10))
+            sub_s = self.font_tiny.render(sub_lbl, True, config.COLOR_TEXT_MUTED)
+            self.screen.blit(sub_s, (205, ry + 32))
+
+        # Right-side LEVEL STATUS details panel
+        panel = pygame.Rect(840, 220, 355, 235)
+        pygame.draw.rect(self.screen, (20, 34, 52), panel, border_radius=10)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, panel, 2, border_radius=10)
+
+        lvl_cfg = config.LEVEL_CONFIGS[selected_level]
+        lvl_best = progression.get("best_by_level", {}).get(selected_level, {})
+        best_score = lvl_best.get("best_score", 0)
+        emerg_cnt = lvl_best.get("emergencies", 0)
+        is_unlocked = demo_unlock_all or (selected_level <= progression.get("max_unlocked", 1))
+
+        self.screen.blit(self.font_header.render(f"LEVEL {selected_level:02d} STATUS:", True, config.COLOR_PRIMARY_GREEN), (panel.x + 20, panel.y + 18))
+        rows = [
+            (f"DIFFICULTY: {lvl_cfg['difficulty']} ({lvl_cfg['runway_count']} RUNWAYS)", config.COLOR_WHITE),
+            (f"TARGET LANDINGS: {lvl_cfg['total_aircraft']} AIRCRAFT", config.COLOR_CYAN),
+            (f"CURRENT BEST: {best_score} PTS", (245, 215, 65)),
+            (f"EMERGENCIES HANDLED: {emerg_cnt}", config.COLOR_WHITE),
+            (f"WIND: {int(lvl_cfg['wind_speed_kts'])} KTS | HEAVY JETS: {int(lvl_cfg['heavy_chance']*100)}%", config.COLOR_TEXT_MUTED),
+            (f"ACCESS: {'UNLOCKED' if is_unlocked else 'LOCKED (Complete prev level)'}", config.COLOR_PRIMARY_GREEN if is_unlocked else config.COLOR_CRITICAL_RED),
+        ]
+        ry = panel.y + 52
+        for txt, col in rows:
+            self.screen.blit(self.font_small.render(txt, True, col), (panel.x + 20, ry))
+            ry += 28
+
+    # =========================================================================
+    # SCREEN 3: GAMEPLAY SIMULATION
+    # =========================================================================
+
