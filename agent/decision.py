@@ -62,3 +62,40 @@ class DecisionEngine:
         utility += max(0.0, 22.0 - float(ac.get("distance_nm", 12.0))) * self.w_distance
         return round(utility, 2)
 
+    def compute_runway_utility(
+        self,
+        ac: Dict[str, Any],
+        runway: Dict[str, Any],
+        weather: Dict[str, Any],
+    ) -> float:
+        """Scores compatibility between a specific aircraft and an available runway."""
+        base_u = self.compute_base_priority_utility(ac)
+        rwy_len = int(runway.get("length_m", 2500))
+        min_len = int(ac.get("min_runway_length_m", 2200))
+
+        # Hard size check: reject incompatible short runways strongly
+        if rwy_len < min_len:
+            return -1000.0
+
+        fit_bonus = 0.0
+        is_emerg = ac.get("emergency_type", "NONE") != "NONE" or ac.get("fuel_level", 100.0) <= config.FUEL_CRITICAL_THRESHOLD
+        size = ac.get("aircraft_size", "MEDIUM")
+
+        # Reserve longest runways for Heavy/Emergency; put Small/Medium on shorter compatible runways
+        if size == "HEAVY" or is_emerg:
+            fit_bonus += (rwy_len - 1800) * 0.025
+        else:
+            # Slight preference for right-sizing shorter compatible runways to keep long runway free
+            slack = rwy_len - min_len
+            fit_bonus += max(5.0, 25.0 - slack * 0.015)
+
+        # Wind alignment bonus
+        wind_spd = float(weather.get("wind_speed_kts", 10.0))
+        wind_dir = float(weather.get("wind_direction_deg", 90.0))
+        rwy_hdg = float(runway.get("heading", 90.0))
+        angle_diff = abs((wind_dir - rwy_hdg + 180.0) % 360.0 - 180.0)
+        if wind_spd >= 25.0 and angle_diff > 60.0:
+            fit_bonus -= 18.0
+
+        return round(base_u + fit_bonus, 2)
+
