@@ -53,3 +53,31 @@ class Button:
         self.is_hovered = False
         self.font = get_button_font(font_size)
 
+    def draw(self, surface: pygame.Surface):
+        if not self.enabled:
+            bg = (52, 64, 78)
+            border = (78, 92, 110)
+            fg = (135, 148, 165)
+        else:
+            bg = self.hover_color if self.is_hovered else self.bg_color
+            border = config.COLOR_WHITE if self.is_hovered else (config.COLOR_CYAN if self.selected else self.border_color)
+            fg = config.COLOR_WHITE if self.is_hovered else self.text_color
+
+        # Subtle drop shadow
+        pygame.draw.rect(surface, (8, 14, 22), (self.rect.x + 2, self.rect.y + 3, self.rect.w, self.rect.h), border_radius=8)
+        pygame.draw.rect(surface, bg, self.rect, border_radius=8)
+        pygame.draw.rect(surface, border, self.rect, 2 if (self.is_hovered or self.selected) else 1, border_radius=8)
+
+        text_surf = self.font.render(self.text, True, fg)
+        surface.blit(text_surf, text_surf.get_rect(center=self.rect.center))
+
+        # Optional corner completion/lock badge
+        if self.tag_icon == "CHECK":
+            cx, cy = self.rect.right - 11, self.rect.bottom - 11
+            pygame.draw.circle(surface, config.COLOR_PRIMARY_GREEN, (cx, cy), 7)
+            pygame.draw.lines(surface, (10, 30, 15), False, [(cx - 4, cy), (cx - 1, cy + 3), (cx + 4, cy - 3)], 2)
+        elif self.tag_icon == "LOCK":
+            lx, ly = self.rect.right - 14, self.rect.bottom - 14
+            pygame.draw.rect(surface, (200, 180, 90), (lx, ly + 4, 10, 8), border_radius=2)
+            pygame.draw.arc(surface, (200, 180, 90), (lx + 2, ly, 6, 8), 0, 3.14, 2)
+
