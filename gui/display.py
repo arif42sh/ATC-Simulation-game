@@ -797,3 +797,15 @@ class DisplayRenderer:
         ov_col = config.COLOR_WARN_AMBER if override_mode else config.COLOR_TEXT_MUTED
         self.screen.blit(self.font_tiny.render(ov_title, True, ov_col), (sx + 18, sy + 596))
 
+    def _render_pause_overlay(self):
+        dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        dim.fill((8, 14, 24, 155))
+        self.screen.blit(dim, (0, 0))
+        box = pygame.Rect(config.CANVAS_WIDTH // 2 - 190, 300, 380, 120)
+        pygame.draw.rect(self.screen, config.COLOR_SIDEBAR_BG, box, border_radius=12)
+        pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 2, border_radius=12)
+        t = self.font_title.render("PAUSED", True, config.COLOR_WHITE)
+        self.screen.blit(t, t.get_rect(center=(box.centerx, box.y + 42)))
+        s = self.font_body.render("Press Pause (||) or [P] to resume airbase simulation", True, config.COLOR_TEXT_MUTED)
+        self.screen.blit(s, s.get_rect(center=(box.centerx, box.y + 82)))
+
