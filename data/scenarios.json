@@ -1,0 +1,41 @@
+{
+  "scenarios": {
+    "normal_landing": {
+      "title": "1. Normal Aircraft Landing",
+      "level_id": 1,
+      "weather": { "condition": "CLEAR", "wind_speed_kts": 8.0, "wind_direction_deg": 90.0, "visibility_km": 10.0 },
+      "aircraft": [
+        { "flight_id": "BG-101", "model": "B737", "fuel_level": 78.0, "emergency_type": "NONE", "waiting_time": 2.0 }
+      ]
+    },
+    "simultaneous_requests": {
+      "title": "2. Multiple Aircraft Landing Requests",
+      "level_id": 1,
+      "weather": { "condition": "CLEAR", "wind_speed_kts": 10.0, "wind_direction_deg": 90.0, "visibility_km": 10.0 },
+      "aircraft": [
+        { "flight_id": "BG-201", "model": "AT72", "fuel_level": 68.0, "emergency_type": "NONE", "waiting_time": 5.0 },
+        { "flight_id": "BG-205", "model": "B737", "fuel_level": 52.0, "emergency_type": "NONE", "waiting_time": 8.0 },
+        { "flight_id": "BG-310", "model": "A320", "fuel_level": 65.0, "emergency_type": "NONE", "waiting_time": 3.0 }
+      ]
+    },
+    "critical_fuel_emergency": {
+      "title": "3. Critically Low-Fuel Emergency",
+      "level_id": 2,
+      "weather": { "condition": "CLEAR", "wind_speed_kts": 12.0, "wind_direction_deg": 90.0, "visibility_km": 10.0 },
+      "aircraft": [
+        { "flight_id": "BG-101", "model": "B737", "fuel_level": 12.0, "emergency_type": "CRITICAL_FUEL", "waiting_time": 10.0 },
+        { "flight_id": "BG-310", "model": "A320", "fuel_level": 65.0, "emergency_type": "NONE", "waiting_time": 4.0 }
+      ]
+    },
+    "engine_problem_emergency": {
+      "title": "4. Engine Problem & Priority Queue",
+      "level_id": 6,
+      "weather": { "condition": "CLEAR", "wind_speed_kts": 14.0, "wind_direction_deg": 90.0, "visibility_km": 9.0 },
+      "aircraft": [
+        { "flight_id": "BG-205", "model": "B737", "fuel_level": 35.0, "emergency_type": "ENGINE_PROBLEM", "waiting_time": 6.0 },
+        { "flight_id": "BG-310", "model": "A320", "fuel_level": 70.0, "emergency_type": "NONE", "waiting_time": 9.0 }
+      ]
+    },
+    "one_runway_occupied": {
+      "title": "5. One Runway Occupied (Alternate Assignment)",
+      "level_id": 3,
