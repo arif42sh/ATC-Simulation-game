@@ -493,3 +493,144 @@ class DisplayRenderer:
     # SCREEN 3: GAMEPLAY SIMULATION
     # =========================================================================
 
+    def render_simulation(
+        self,
+        airbase: Airbase,
+        agent: ATCAgent,
+        level_mgr: LevelManager,
+        selected_ac: Optional[Aircraft],
+        override_mode: bool,
+        drag_state: Optional[Dict[str, Any]],
+        is_paused: bool,
+        sim_speed: float,
+        modal_state: Optional[Dict[str, Any]],
+        muted: bool,
+    ):
+        self.screen.blit(self._terrain_cache, (0, 0))
+
+        # Highlight hovered runway if player is dragging, or compatible runways when holding plane selected
+        hovered_rwy = drag_state.get("hovered_runway") if drag_state else None
+        drag_valid = drag_state.get("is_valid", True) if drag_state else True
+        active_ac = (
+            drag_state.get("aircraft")
+            if drag_state
+            else (selected_ac if selected_ac and selected_ac.status == FlightStatus.HOLDING else None)
+        )
+        self._draw_airbase_tarmac_and_runways(
+            airbase,
+            hovered_rwy=hovered_rwy,
+            drag_valid=drag_valid,
+            active_ac=active_ac,
+        )
+
+        # Draw perimeter holding orbit circles when any aircraft is holding
+        drawn_orbits = set()
+        for ac in airbase.aircraft_fleet:
+            if ac.status == FlightStatus.HOLDING:
+                okey = (int(ac.orbit_x), int(ac.orbit_y), int(ac.orbit_radius))
+                if okey not in drawn_orbits:
+                    drawn_orbits.add(okey)
+                    ring_w = 2 if selected_ac is ac else 1
+                    pygame.draw.circle(self.screen, (135, 215, 165), (okey[0], okey[1]), okey[2], ring_w)
+                    h_tag = self.font_tiny.render("HOLD", True, (150, 226, 178))
+                    self.screen.blit(h_tag, (okey[0] + okey[2] - 10, okey[1] - okey[2] - 8))
+
+        # Draw subtle AI-recommended route preview lines while planes await clearance
+        plan = agent.ui_state.get("current_plan")
+        if plan and not drag_state:
+            for item in plan.get("assignments", [])[:3]:
+                if item.get("action") != "AUTHORIZE_LANDING" or not item.get("assigned_runway"):
+                    continue
+                pac = airbase.get_aircraft(item["flight_id"])
+                rwy = airbase.runways.get(item["assigned_runway"])
+                if pac and pac.status == FlightStatus.HOLDING and rwy and rwy.is_available():
+                    p_col = (240, 120, 125) if pac.is_emergency() else (110, 210, 235)
+                    self._draw_dotted_line((pac.x, pac.y), (rwy.approach_x, rwy.approach_y), p_col, spacing=18, radius=1)
+                    pygame.draw.circle(self.screen, p_col, (int(rwy.approach_x), int(rwy.approach_y)), 5, 1)
+
+        # Draw aircraft trails & approach paths
+        for ac in airbase.aircraft_fleet:
+            if not ac.is_active_in_airspace():
+                continue
+            if len(ac.trail) >= 2:
+                for idx in range(len(ac.trail) - 1):
+                    self._draw_dotted_line(ac.trail[idx], ac.trail[idx + 1], (210, 228, 208), spacing=10)
+
+            if ac.status in (FlightStatus.INTERCEPT, FlightStatus.APPROACHING) and ac.assigned_runway:
+                rwy = airbase.runways.get(ac.assigned_runway)
+                if rwy:
+                    path_col = config.COLOR_CRITICAL_RED if ac.is_emergency() else config.COLOR_CYAN
+                    target = (rwy.approach_x, rwy.approach_y) if ac.status == FlightStatus.INTERCEPT else (rwy.start_x, rwy.start_y)
+                    self._draw_dotted_line((ac.x, ac.y), target, path_col, spacing=8)
+
+        # Draw Drag-and-Draw Manual Override Preview Path
+        if drag_state and drag_state.get("aircraft"):
+            src_ac = drag_state["aircraft"]
+            mx, my = drag_state["mouse_pos"]
+            line_col = config.COLOR_PRIMARY_GREEN if drag_valid else config.COLOR_CRITICAL_RED
+            self._draw_dotted_line((src_ac.x, src_ac.y), (mx, my), line_col, spacing=7)
+            pygame.draw.circle(self.screen, line_col, (mx, my), 7, 2)
+            if drag_state.get("reason"):
+                tip = self.font_tiny.render(drag_state["reason"], True, line_col)
+                tip_w = tip.get_width() + 10
+                tx = mx + 12
+                if tx + tip_w > config.CANVAS_WIDTH - 6:
+                    tx = max(6, mx - 12 - tip_w)
+                ty = max(config.TOP_BAR_HEIGHT + 4, min(config.WINDOW_HEIGHT - 54, my - 13))
+                tip_rect = pygame.Rect(tx, ty, tip_w, 19)
+                pygame.draw.rect(self.screen, (14, 24, 38), tip_rect, border_radius=4)
+                pygame.draw.rect(self.screen, line_col, tip_rect, 1, border_radius=4)
+                self.screen.blit(tip, (tip_rect.x + 5, tip_rect.y + 2))
+
+        # Touchdown smoke particles
+        for p in self.particles:
+            p.draw(self.screen)
+
+        # Aircraft sprites + emergency circles + fuel % badges
+        for ac in airbase.aircraft_fleet:
+            if not ac.is_active_in_airspace():
+                continue
+            self._draw_gameplay_aircraft(ac, is_selected=(selected_ac is ac))
+
+        # Floating score popups
+        for f in self.floating_texts:
+            f.draw(self.screen, self.font_body_bold)
+
+        # Top HUD Bar
+        lvl_cfg = level_mgr.level_cfg
+        wind_txt = f"LVL {level_mgr.current_level:02d} ({lvl_cfg['difficulty']}) | WIND {int(airbase.wind_speed_kts)}KT | {airbase.weather}"
+        self._draw_top_hud_bar(
+            landed_count=len(airbase.flight_history),
+            score_label="SCORE",
+            score_val=agent.reward_system.cumulative_reward,
+            mysql_ok=True,
+            ai_ready=True,
+            extra_text=wind_txt,
+            show_status_box=False,
+        )
+
+        # Event Alert Toast Banner inside Left Canvas
+        if level_mgr.active_banner:
+            self._draw_event_banner(level_mgr.active_banner)
+
+        # Compact bottom controls legend bar inside radar canvas
+        ctrl_rect = pygame.Rect(14, config.WINDOW_HEIGHT - 30, config.CANVAS_WIDTH - 28, 24)
+        pygame.draw.rect(self.screen, (14, 24, 38), ctrl_rect, border_radius=5)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, ctrl_rect, 1, border_radius=5)
+        ctrl_prefix = self.font_tiny.render("CONTROLS:", True, config.COLOR_CYAN)
+        ctrl_body = self.font_tiny.render(
+            "Drag Plane -> Runway  |  Click Plane -> Click Runway  |  [SPACE] Accept AI  |  [P] Pause  |  [1-4] Runway  |  [H] Hold",
+            True, config.COLOR_TEXT_MUTED,
+        )
+        self.screen.blit(ctrl_prefix, (ctrl_rect.x + 12, ctrl_rect.y + 4))
+        self.screen.blit(ctrl_body, (ctrl_rect.x + 84, ctrl_rect.y + 4))
+
+        # Right Sidebar (SKYATC AI Panel)
+        self._render_gameplay_sidebar(airbase, agent, level_mgr, selected_ac, override_mode)
+
+        # Optional Modal Overlay (Pause / Level Complete / Crash)
+        if modal_state:
+            self._render_modal_overlay(modal_state)
+        elif is_paused:
+            self._render_pause_overlay()
+
