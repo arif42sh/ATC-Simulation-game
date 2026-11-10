@@ -262,3 +262,47 @@ def _build_level_configs() -> Dict[int, Dict[str, Any]]:
 
 LEVEL_CONFIGS: Dict[int, Dict[str, Any]] = _build_level_configs()
 
+# -----------------------------------------------------------------------------
+# Aircraft & Physics Constants
+# -----------------------------------------------------------------------------
+FUEL_CONSUMPTION_RATE_HOLDING = 0.18   # %/sec while circling in holding pattern
+FUEL_CONSUMPTION_RATE_APPROACH = 0.09  # %/sec while on cleared approach
+FUEL_CRITICAL_THRESHOLD = 20.0         # Auto-declare CRITICAL_FUEL <= 20%
+WAITING_REWARD_THRESHOLD = 12.0        # Bonus eligibility if cleared fast
+
+# -----------------------------------------------------------------------------
+# Official Reward & Penalty Matrix (Report Section 13)
+# -----------------------------------------------------------------------------
+REWARDS: Dict[str, int] = {
+    "EMERGENCY_HANDLED": 30,
+    "SUCCESSFUL_LANDING": 10,
+    "CORRECT_RUNWAY_ASSIGNMENT": 15,
+    "RUNWAY_CONFLICT_AVOIDED": 20,
+    "EFFICIENT_UTILIZATION": 10,
+    "REDUCED_WAITING_TIME": 10,
+    "EMERGENCY_DELAYED": -25,
+    "WRONG_RUNWAY_ASSIGNMENT": -20,
+    "RUNWAY_CONFLICT": -25,
+    "INVALID_AI_DECISION": -15,
+    "UNSAFE_DECISION": -30,
+}
+
+# -----------------------------------------------------------------------------
+# Database Configuration (MySQL + SQLite Fallback)
+# -----------------------------------------------------------------------------
+DB_TYPE = os.getenv("DB_TYPE", "mysql")
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_PORT = int(os.getenv("DB_PORT", "3306"))
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_NAME = os.getenv("DB_NAME", "SKYATC")
+SQLITE_DB_PATH = BASE_DIR / os.getenv("SQLITE_PATH", "data/skyatc.db")
+
+# -----------------------------------------------------------------------------
+# AI / LLM Configuration (Google Gemini 2.5 Flash via google-genai SDK)
+# -----------------------------------------------------------------------------
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
+AI_MODEL = os.getenv("AI_MODEL", "gemini-2.5-flash")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+LLM_TIMEOUT_SECONDS = 5.0
+USE_OFFLINE_FALLBACK = True
