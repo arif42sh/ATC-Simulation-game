@@ -179,3 +179,26 @@ class TestSkyATCV2(unittest.TestCase):
         self.assertFalse(ok3)
         self.assertEqual(code3, "DUPLICATE_ASSIGNMENT")
 
+    def test_tc11_player_override_validation_and_execution(self):
+        """TC-11: Player manual override validates and executes cleanly."""
+        self.airbase.add_aircraft(Aircraft("BG-501", model="A320", fuel_level=60.0))
+        self.agent.step(0.5)
+        ok, msg = self.agent.override_assignment("BG-501", "RWY 2")
+        self.assertTrue(ok, msg)
+        self.assertEqual(self.airbase.get_aircraft("BG-501").assigned_runway, "RWY 2")
+        self.assertEqual(self.agent.stats["player_overrides"], 1)
+
+    def test_tc12_hitl_10s_timeout_auto_execute(self):
+        """TC-12: When 10s decision window expires, AI automatically executes validated plan."""
+        ac = Aircraft("BG-601", model="B737", fuel_level=55.0)
+        self.airbase.add_aircraft(ac)
+        self.assertEqual(ac.hitl_decision_timer, config.HITL_TIMEOUT_SECONDS)
+
+        self.airbase.update(10.5)
+        self.agent.step(10.5)
+
+        self.assertFalse(ac.hitl_pending)
+        self.assertEqual(ac.decision_maker, "AI_AGENT")
+        self.assertEqual(self.agent.stats["timeout_auto_executes"], 1)
+        self.assertGreater(self.agent.reward_system.cumulative_reward, 0)
+
