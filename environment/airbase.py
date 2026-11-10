@@ -133,3 +133,42 @@ class Airbase:
         self.aircraft_map[aircraft.flight_id] = aircraft
         self.arrival_queue.append(aircraft.flight_id)
 
+    def get_aircraft(self, flight_id: str) -> Optional[Aircraft]:
+        """O(1) Hash Map retrieval by Flight ID (Report Section 11.3)."""
+        return self.aircraft_map.get(flight_id)
+
+    def get_pending_requests(self) -> List[Aircraft]:
+        """Returns all aircraft currently waiting in HOLDING pattern for clearance."""
+        return [ac for ac in self.aircraft_fleet if ac.status == FlightStatus.HOLDING]
+
+    def get_active_aircraft(self) -> List[Aircraft]:
+        """Returns all non-landed, non-crashed aircraft."""
+        return [ac for ac in self.aircraft_fleet if ac.is_active_in_airspace()]
+
+    def get_ranked_pending_aircraft(self) -> List[Aircraft]:
+        """Returns pending holding aircraft in exact AI Priority Queue order."""
+        pending = self.get_pending_requests()
+        pending.sort(key=lambda a: (-a.get_priority_score(), a.arrival_seq, a.flight_id))
+        return pending
+
+    def get_available_runways(self) -> List[Runway]:
+        """Returns list of currently Available runways."""
+        return [r for r in self.runways.values() if r.is_available()]
+
+    def set_weather(self, condition: str, wind_speed_kts: float = 12.0, wind_direction_deg: float = 90.0, visibility_km: float = 10.0):
+        """Updates weather and temporarily closes compromised short runway during severe storms."""
+        self.weather = condition
+        self.wind_speed_kts = wind_speed_kts
+        self.wind_direction_deg = wind_direction_deg
+        self.visibility_km = visibility_km
+
+        # During STORM or extreme crosswind (>34 kts), shortest runway becomes Unavailable
+        rwy_ids = list(self.runways.keys())
+        if len(rwy_ids) >= 2:
+            shortest_rwy = min(self.runways.values(), key=lambda r: r.length_m)
+            if condition == WeatherCondition.STORM or (condition == WeatherCondition.CROSSWIND and wind_speed_kts >= 34.0):
+                if shortest_rwy.status == RunwayStatus.AVAILABLE:
+                    shortest_rwy.set_unavailable(f"Weather ({condition})", duration_seconds=22.0)
+            elif shortest_rwy.status == RunwayStatus.UNAVAILABLE and "Weather" in shortest_rwy.status_reason:
+                shortest_rwy.release()
+
