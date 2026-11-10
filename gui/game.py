@@ -364,3 +364,44 @@ class SkyATCGame:
     # Main Simulation Loop & Event Dispatch
     # -------------------------------------------------------------------------
 
+    def run(self):
+        while self.is_running:
+            raw_dt = min(self.clock.tick(config.FPS) / 1000.0, 0.08)
+            dt = raw_dt * self.sim_speed
+
+            self._handle_events()
+            self.renderer.update_vfx(raw_dt)
+
+            if self.current_state == GameState.SIMULATION and not self.is_paused and not self.modal_state:
+                crashed_ac = self.airbase.update(dt)
+                self.agent.step(dt)
+                self.level_mgr.update(dt)
+
+                # Trigger audio, notifications & smoke on events
+                while self.agent.notifications:
+                    note = self.agent.notifications.pop(0)
+                    self.renderer.add_floating_text(note, 480, 120, config.COLOR_CYAN)
+
+                for ac in self.airbase.aircraft_fleet:
+                    if ac.is_emergency() and ac.flight_id not in self._seen_emergency_ids:
+                        self._seen_emergency_ids.add(ac.flight_id)
+                        self.sound.play("emergency")
+                    if ac.touchdown_occurred and not ac.touchdown_sound_played:
+                        ac.touchdown_sound_played = True
+                        self.sound.play("landing")
+                        self.renderer.add_touchdown_smoke(ac.x, ac.y)
+                        self.renderer.add_floating_text(f"{ac.flight_id} LANDED!", ac.x, ac.y - 22, config.COLOR_PRIMARY_GREEN)
+
+                if crashed_ac:
+                    self._trigger_crash_modal(crashed_ac)
+                elif self.level_mgr.is_level_complete():
+                    self._trigger_complete_modal()
+
+            self._render_current_screen()
+            self.action_panel.draw(self.screen)
+            pygame.display.flip()
+
+        self.db_logger.db.close()
+        pygame.quit()
+        sys.exit()
+
