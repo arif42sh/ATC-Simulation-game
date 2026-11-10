@@ -330,3 +330,37 @@ class SkyATCGame:
         else:
             self.sound.play("warning")
 
+    def _manual_assign_selected(self, runway_id: str):
+        target = self.selected_aircraft
+        if not target or target.status != FlightStatus.HOLDING:
+            pending = self.airbase.get_ranked_pending_aircraft()
+            target = pending[0] if pending else None
+
+        if not target:
+            return
+
+        ok, msg = self.agent.override_assignment(target.flight_id, runway_id)
+        if ok:
+            self.sound.play("click")
+            self.override_mode = False
+            self.selected_aircraft = None
+            self.renderer.add_floating_text(msg, target.x, target.y - 24, config.COLOR_CYAN)
+        else:
+            self.sound.play("warning")
+            self.renderer.add_floating_text(msg, target.x, target.y - 24, config.COLOR_CRITICAL_RED)
+        self._rebuild_buttons()
+
+    def _scroll_logs(self, delta: int):
+        logs = (self._cached_stats or {}).get("recent_logs", [])
+        max_scroll = max(0, len(logs) - 8)
+        self.log_scroll = max(0, min(max_scroll, self.log_scroll + delta))
+
+    def _on_export_csv(self):
+        self.sound.play("click")
+        out_path = self.db_logger.export_logs_to_csv()
+        self.export_toast = f"Report exported successfully: exports/{out_path.name}"
+
+    # -------------------------------------------------------------------------
+    # Main Simulation Loop & Event Dispatch
+    # -------------------------------------------------------------------------
+
