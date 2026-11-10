@@ -98,3 +98,44 @@ class TestSkyATCV2(unittest.TestCase):
         self.assertEqual(tie_ranked, ["BG-901", "BG-902"])
         self.assertEqual(tie_ranked, tie_heap)
 
+    def test_tc03_tc04_critical_fuel_and_engine_emergencies(self):
+        """TC-03 & TC-04: Critically low fuel & engine problem get highest priority over normal flights."""
+        normal = Aircraft("BG-310", fuel_level=80.0)
+        low_fuel = Aircraft("BG-101", fuel_level=12.0, emergency_type=EmergencyType.CRITICAL_FUEL)
+        engine_prob = Aircraft("BG-205", fuel_level=40.0, emergency_type=EmergencyType.ENGINE_PROBLEM)
+        self.airbase.add_aircraft(normal)
+        self.airbase.add_aircraft(low_fuel)
+        self.airbase.add_aircraft(engine_prob)
+        self.agent.step(0.5)
+        assignments = self.agent.ui_state["current_plan"]["assignments"]
+        top_two = {a["flight_id"] for a in assignments[:2]}
+        self.assertEqual(top_two, {"BG-101", "BG-205"})
+
+    def test_tc05_tc06_conflict_free_when_one_runway_occupied(self):
+        """TC-05 & TC-06: One runway occupied routes next aircraft to alternate available runway."""
+        self.airbase.runways["RWY 1"].occupy("BG-999", duration_seconds=10.0)
+        self.airbase.add_aircraft(Aircraft("BG-101", model="B737", fuel_level=50.0))
+        self.airbase.add_aircraft(Aircraft("BG-102", model="AT72", fuel_level=60.0))
+        self.agent.step(0.5)
+        assignments = self.agent.ui_state["current_plan"]["assignments"]
+        cleared = [a for a in assignments if a["action"] == "AUTHORIZE_LANDING"]
+        self.assertEqual(len(cleared), 1)
+        self.assertEqual(cleared[0]["assigned_runway"], "RWY 2")
+
+    def test_tc07_tc08_runway_unavailable_and_dynamic_replan(self):
+        """TC-07 & TC-08: Maintenance/weather closure or sudden emergency triggers dynamic re-plan."""
+        self.airbase.setup_for_level(11)  # 3 runways
+        self.airbase.add_aircraft(Aircraft("BG-401", model="A320", fuel_level=65.0))
+        self.agent.step(0.5)
+
+        # Put RWY 2 under maintenance & inject sudden emergency
+        self.airbase.runways["RWY 2"].set_maintenance("FOD Check", 15.0)
+        self.airbase.add_aircraft(Aircraft("BG-402", model="B737", fuel_level=11.0, emergency_type=EmergencyType.CRITICAL_FUEL))
+        self.agent.step(0.5)
+
+        self.assertGreater(self.agent.stats["replan_events"], 0)
+        assignments = self.agent.ui_state["current_plan"]["assignments"]
+        assigned_rwys = {a["assigned_runway"] for a in assignments if a["assigned_runway"]}
+        self.assertNotIn("RWY 2", assigned_rwys)
+        self.assertEqual(assignments[0]["flight_id"], "BG-402")
+
