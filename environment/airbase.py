@@ -76,3 +76,32 @@ class Airbase:
 
         self.setup_for_level(level_id)
 
+    def setup_for_level(self, level_id: int):
+        """Configures 2, 3, or 4 runways and resets state for the given level."""
+        self.level_id = max(1, min(20, int(level_id)))
+        lvl_cfg = config.LEVEL_CONFIGS[self.level_id]
+        rwy_count = lvl_cfg["runway_count"]
+
+        self.runways.clear()
+        for r_cfg in config.RUNWAY_LAYOUTS[rwy_count]:
+            self.runways[r_cfg["id"]] = Runway(
+                runway_id=r_cfg["id"],
+                name=r_cfg["name"],
+                length_m=r_cfg["length_m"],
+                start=r_cfg["start"],
+                end=r_cfg["end"],
+                heading=r_cfg["heading"],
+            )
+
+        self.aircraft_fleet.clear()
+        self.aircraft_map.clear()
+        self.arrival_queue.clear()
+        self.flight_history.clear()
+        self.crashed_aircraft = None
+        self._arrival_seq_counter = 0
+
+        self.weather = WeatherCondition.CLEAR
+        self.wind_speed_kts = lvl_cfg["wind_speed_kts"]
+        self.wind_direction_deg = random.choice([90.0, 180.0, 270.0, 60.0])
+        self.visibility_km = 10.0
+
