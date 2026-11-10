@@ -136,3 +136,49 @@ class ATCAgent:
 
         self.last_observed_state = current_state
 
+    def _apply_plan_to_ui_and_db(self, plan: Dict[str, Any]):
+        """Updates sidebar recommendation text and logs top agent decision to DB."""
+        self.ui_state["current_plan"] = plan
+        self.ui_state["reason_badge"] = plan.get("reasoning", "Utility sequencing active.")
+        source = plan.get("source", "LOCAL_UTILITY")
+        self.ui_state["mode_label"] = f"LLM API ({config.AI_MODEL})" if source == "LLM_API" else "Local Utility Fallback"
+
+        lines: List[str] = []
+        for item in plan.get("assignments", [])[:3]:
+            fid = item.get("flight_id")
+            rwy = item.get("assigned_runway") or "HOLD ORBIT"
+            prio = item.get("priority", 1)
+            lines.append(f"Priority {prio}: {fid} -> {rwy}")
+
+            sig = (item.get("assigned_runway"), source, plan.get("validation_code", "VALID"))
+            if self.db_logger and fid:
+                ac = self.airbase.get_aircraft(fid)
+                prev_id = self._last_decision_id_by_flight.get(fid)
+                if prev_id is None:
+                    dec_id = self.db_logger.log_agent_decision(
+                        request_id=ac.db_request_id if ac else None,
+                        flight_id=fid,
+                        priority=prio,
+                        assigned_runway=item.get("assigned_runway"),
+                        ai_reason=item.get("rationale", plan.get("reasoning", "")),
+                        decision_source=source,
+                        validation_status=plan.get("validation_code", "VALID"),
+                        decision_time_ms=plan.get("latency_ms", 1.0),
+                    )
+                    if dec_id:
+                        self._last_decision_id_by_flight[fid] = dec_id
+                        self._last_decision_sig_by_flight[fid] = sig
+                elif sig != self._last_decision_sig_by_flight.get(fid):
+                    self.db_logger.update_agent_decision(
+                        decision_id=prev_id,
+                        priority=prio,
+                        assigned_runway=item.get("assigned_runway"),
+                        ai_reason=item.get("rationale", plan.get("reasoning", "")),
+                        decision_source=source,
+                        validation_status=plan.get("validation_code", "VALID"),
+                        decision_time_ms=plan.get("latency_ms", 1.0),
+                    )
+                    self._last_decision_sig_by_flight[fid] = sig
+
+        self.ui_state["plan_lines"] = lines
+
