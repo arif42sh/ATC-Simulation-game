@@ -212,3 +212,101 @@ class DisplayRenderer:
                 active_ac=active_ac,
             )
 
+    def _draw_single_runway(
+        self,
+        rwy,
+        is_hovered: bool = False,
+        drag_valid: bool = True,
+        active_ac: Optional[Aircraft] = None,
+    ):
+        """Draws an asphalt runway strip with markings, threshold keys, and status badge."""
+        half_w = 18.0
+        nx, ny = -rwy.uy * half_w, rwy.ux * half_w
+        corners = [
+            (rwy.start_x + nx, rwy.start_y + ny),
+            (rwy.end_x + nx, rwy.end_y + ny),
+            (rwy.end_x - nx, rwy.end_y - ny),
+            (rwy.start_x - nx, rwy.start_y - ny),
+        ]
+
+        compat_state: Optional[bool] = None
+        if active_ac is not None and rwy.status == RunwayStatus.AVAILABLE:
+            compat_state = rwy.supports_aircraft(active_ac.min_runway_length_m)
+
+        # Highlight glow if hovering during drag, or compatibility ring when an aircraft is selected
+        if is_hovered or compat_state is not None:
+            if is_hovered:
+                glow_col = config.COLOR_PRIMARY_GREEN if drag_valid else config.COLOR_CRITICAL_RED
+                border_w, pad = 3, 5.0
+            elif compat_state:
+                glow_col = config.COLOR_PRIMARY_GREEN
+                border_w, pad = 2, 4.0
+            else:
+                glow_col = config.COLOR_WARN_AMBER
+                border_w, pad = 2, 4.0
+
+            g_nx, g_ny = -rwy.uy * (half_w + pad), rwy.ux * (half_w + pad)
+            g_corners = [
+                (rwy.start_x + g_nx, rwy.start_y + g_ny),
+                (rwy.end_x + g_nx, rwy.end_y + g_ny),
+                (rwy.end_x - g_nx, rwy.end_y - g_ny),
+                (rwy.start_x - g_nx, rwy.start_y - g_ny),
+            ]
+            pygame.draw.polygon(self.screen, glow_col, g_corners, border_w)
+
+        pygame.draw.polygon(self.screen, config.COLOR_RUNWAY_ASPHALT, corners)
+        pygame.draw.polygon(self.screen, (210, 210, 200), corners, 1)
+
+        # Threshold piano keys (both ends)
+        for end_t in (8.0, rwy.pixel_length - 18.0):
+            for offset in (-10.0, -4.0, 2.0, 8.0):
+                px = rwy.start_x + rwy.ux * end_t - rwy.uy * offset
+                py = rwy.start_y + rwy.uy * end_t + rwy.ux * offset
+                qx = px + rwy.ux * 10.0
+                qy = py + rwy.uy * 10.0
+                pygame.draw.line(self.screen, config.COLOR_RUNWAY_MARKING, (px, py), (qx, qy), 2)
+
+        # Centerline dashes
+        t = 28.0
+        while t < rwy.pixel_length - 28.0:
+            p1 = (rwy.start_x + rwy.ux * t, rwy.start_y + rwy.uy * t)
+            p2 = (rwy.start_x + rwy.ux * (t + 14.0), rwy.start_y + rwy.uy * (t + 14.0))
+            pygame.draw.line(self.screen, config.COLOR_RUNWAY_MARKING, p1, p2, 2)
+            t += 26.0
+
+        # If Unavailable / Maintenance, draw hazard stripes across runway
+        if rwy.status in (RunwayStatus.UNAVAILABLE, RunwayStatus.UNDER_MAINTENANCE):
+            s_t = 32.0
+            while s_t < rwy.pixel_length - 32.0:
+                cx = rwy.start_x + rwy.ux * s_t
+                cy = rwy.start_y + rwy.uy * s_t
+                pygame.draw.line(
+                    self.screen, config.COLOR_WARN_AMBER,
+                    (cx - rwy.uy * 14, cy + rwy.ux * 14),
+                    (cx + rwy.uy * 14, cy - rwy.ux * 14), 3
+                )
+                s_t += 28.0
+
+        # Status badge pill above runway start/mid
+        if rwy.status == RunwayStatus.AVAILABLE:
+            if compat_state is False:
+                st_col = config.COLOR_WARN_AMBER
+                st_txt = f"{rwy.id} ({rwy.length_m}m) TOO SHORT"
+            else:
+                st_col = config.COLOR_PRIMARY_GREEN
+                st_txt = f"{rwy.id} ({rwy.length_m}m) FREE"
+        elif rwy.status == RunwayStatus.OCCUPIED:
+            st_col = config.COLOR_CRITICAL_RED
+            st_txt = f"{rwy.id} OCCUPIED [{rwy.current_aircraft}]"
+        else:
+            st_col = config.COLOR_WARN_AMBER
+            st_txt = f"{rwy.id} {rwy.status.upper()}"
+
+        lbl = self.font_tiny.render(st_txt, True, st_col)
+        bx = int(rwy.center_x - lbl.get_width() // 2 - 6)
+        by = int(rwy.center_y - 34)
+        pill = pygame.Rect(bx, by, lbl.get_width() + 12, 18)
+        pygame.draw.rect(self.screen, (14, 24, 38), pill, border_radius=4)
+        pygame.draw.rect(self.screen, st_col, pill, 1, border_radius=4)
+        self.screen.blit(lbl, (bx + 6, by + 2))
+
