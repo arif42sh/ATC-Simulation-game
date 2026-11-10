@@ -99,3 +99,93 @@ class DecisionEngine:
 
         return round(base_u + fit_bonus, 2)
 
+    def generate_deterministic_plan(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generates a complete, conflict-free landing plan using the Min-Heap Priority Queue
+        plus Explainable AI human-readable rationale.
+        """
+        aircraft_list = state.get("aircraft", [])
+        runways = state.get("runways", {})
+        weather = state.get("weather", {})
+
+        pending = [ac for ac in aircraft_list if ac.get("status") == "HOLDING"]
+        if not pending:
+            return {
+                "reasoning": "Airspace nominal; no aircraft holding for landing clearance.",
+                "assignments": [],
+                "source": "LOCAL_UTILITY",
+            }
+
+        ordered_pending = self.pop_sorted_priorities(pending)
+        available_rwys = [r for r in runways.values() if r.get("status") == RunwayStatus.AVAILABLE]
+        busy_reasons = [
+            f"{r_id} {r.get('status').lower()}"
+            for r_id, r in runways.items()
+            if r.get("status") != RunwayStatus.AVAILABLE
+        ]
+
+        if not available_rwys:
+            top_ac = ordered_pending[0][1]
+            reason = f"Holding {top_ac['flight_id']} (Fuel {int(top_ac['fuel_level'])}%); all runways busy/unavailable"
+            return {
+                "reasoning": reason,
+                "assignments": [
+                    {
+                        "flight_id": ac["flight_id"],
+                        "priority": idx,
+                        "assigned_runway": None,
+                        "action": "HOLD",
+                        "rationale": "All runways currently occupied or unavailable; orbiting safely.",
+                    }
+                    for idx, (_, ac) in enumerate(ordered_pending, start=1)
+                ],
+                "source": "LOCAL_UTILITY",
+            }
+
+        used_runways = set()
+        assignments: List[Dict[str, Any]] = []
+        top_reason_parts: List[str] = []
+
+        for priority_rank, (u_score, ac) in enumerate(ordered_pending, start=1):
+            best_rwy: Optional[Dict[str, Any]] = None
+            best_score = -9999.0
+
+            for rwy in available_rwys:
+                if rwy["id"] in used_runways:
+                    continue
+                score = self.compute_runway_utility(ac, rwy, weather)
+                if score > best_score:
+                    best_score = score
+                    best_rwy = rwy
+
+            if best_rwy is not None and best_score > -500.0:
+                used_runways.add(best_rwy["id"])
+                rationale = self._build_explainable_reason(ac, best_rwy, busy_reasons, u_score)
+                if not top_reason_parts:
+                    top_reason_parts.append(rationale)
+                assignments.append({
+                    "flight_id": ac["flight_id"],
+                    "priority": priority_rank,
+                    "assigned_runway": best_rwy["id"],
+                    "action": "AUTHORIZE_LANDING",
+                    "rationale": rationale,
+                })
+            else:
+                reason = f"Hold {ac['flight_id']}; no compatible {ac.get('min_runway_length_m', 2200)}m+ runway free"
+                if not top_reason_parts:
+                    top_reason_parts.append(reason)
+                assignments.append({
+                    "flight_id": ac["flight_id"],
+                    "priority": priority_rank,
+                    "assigned_runway": None,
+                    "action": "HOLD",
+                    "rationale": reason,
+                })
+
+        return {
+            "reasoning": top_reason_parts[0] if top_reason_parts else "Optimal Min-Heap utility runway plan.",
+            "assignments": assignments,
+            "source": "LOCAL_UTILITY",
+        }
+
+    @staticmethod
