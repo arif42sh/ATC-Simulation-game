@@ -261,3 +261,19 @@ class Airbase:
 
         return self.crashed_aircraft
 
+    def get_state_summary(self) -> Dict[str, Any]:
+        """Serializable snapshot for AI Agent observer & Gemini prompt."""
+        return {
+            "level_id": self.level_id,
+            "weather": {
+                "condition": self.weather,
+                "wind_speed_kts": self.wind_speed_kts,
+                "wind_direction_deg": self.wind_direction_deg,
+                "visibility_km": self.visibility_km,
+            },
+            "runways": {r_id: r.to_dict() for r_id, r in self.runways.items()},
+            "aircraft": [ac.to_dict() for ac in self.aircraft_fleet if ac.is_active_in_airspace()],
+            "total_in_queue": len(self.get_pending_requests()),
+            "total_emergencies": len([a for a in self.aircraft_fleet if a.is_active_in_airspace() and a.is_emergency()]),
+            "landed_count": len(self.flight_history),
+        }
