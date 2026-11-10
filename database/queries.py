@@ -315,3 +315,51 @@ class DatabaseLogger:
             "highest_completed_level": highest_lvl,
         }
 
+    def export_logs_to_csv(self) -> Path:
+        """Exports database operational logs & stats to a CSV report file."""
+        config.EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = config.EXPORT_DIR / f"skyatc_report_{stamp}.csv"
+
+        stats = self.get_stats_dashboard_data()
+        rows = self.db.fetchall(
+            """SELECT ad.decision_id, ad.request_id, ad.flight_id, ad.recommended_priority,
+                      ad.assigned_runway_id, ad.decision_source, ad.validation_status,
+                      ad.decision_time_ms, ad.ai_reason, ad.decision_timestamp,
+                      COALESCE(pd.decision_type, 'NONE') as player_decision_type,
+                      COALESCE(pd.selected_runway_id, '') as player_runway
+               FROM agent_decisions ad
+               LEFT JOIN player_decisions pd ON ad.decision_id = pd.decision_id
+               ORDER BY ad.decision_id DESC"""
+        )
+
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["SkyATC AI - Operational & Performance Report"])
+            writer.writerow(["Generated At", datetime.datetime.now().isoformat()])
+            writer.writerow(["Database Engine", self.db.engine_type.upper()])
+            writer.writerow(["Total Missions", stats["total_missions"], "Successful Landings", stats["successful_landings"], "Accumulated Rewards", stats["accumulated_rewards"]])
+            writer.writerow(["AI Accuracy %", stats["ai_accuracy"], "Validation Rejections", stats["validation_rejections"], "Timeout Auto-Executes", stats["timeout_auto_executes"]])
+            writer.writerow([])
+            writer.writerow([
+                "Decision ID", "Request ID", "Flight ID", "Priority",
+                "AI Runway", "Source", "Validation", "Latency (ms)",
+                "Player Action", "Player Runway", "AI Reason", "Timestamp"
+            ])
+            for r in rows:
+                writer.writerow([
+                    r.get("decision_id"),
+                    r.get("request_id"),
+                    r.get("flight_id"),
+                    r.get("recommended_priority"),
+                    r.get("assigned_runway_id"),
+                    r.get("decision_source"),
+                    r.get("validation_status"),
+                    r.get("decision_time_ms"),
+                    r.get("player_decision_type"),
+                    r.get("player_runway"),
+                    r.get("ai_reason"),
+                    r.get("decision_timestamp"),
+                ])
+
+        return out_path
