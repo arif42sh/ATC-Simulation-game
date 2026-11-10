@@ -50,3 +50,23 @@ Required JSON schema:
 """
 
 
+class LLMClient:
+    """
+    Integrates Google Gemini API (gemini-2.5-flash via google-genai SDK) with
+    non-blocking background async calls and deterministic Min-Heap Utility fallback.
+    """
+
+    def __init__(self, decision_engine: Optional[DecisionEngine] = None):
+        self.api_key = config.GEMINI_API_KEY.strip()
+        self.model = config.AI_MODEL or "gemini-2.5-flash"
+        self.decision_engine = decision_engine or DecisionEngine()
+
+        self.sdk_ready = bool(self.api_key and GENAI_SDK_AVAILABLE)
+        self.client = genai.Client(api_key=self.api_key) if self.sdk_ready else None
+
+        self.active_mode = "LLM API Ready" if self.sdk_ready else "Local Utility Fallback"
+        self.last_latency_ms: float = 0.0
+        self.last_error: str = ""
+        self._seq_lock = threading.Lock()
+        self._latest_seq = 0
+
