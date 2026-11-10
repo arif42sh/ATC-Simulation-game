@@ -211,3 +211,53 @@ class Airbase:
         aircraft.return_to_holding_orbit()
         return True
 
+    def update(self, dt: float) -> Optional[Aircraft]:
+        """
+        Steps runway timers, aircraft kinematics, collision/fuel crash detection.
+        Returns the crashed Aircraft if a fatal failure occurs, else None.
+        """
+        for runway in self.runways.values():
+            runway.update(dt)
+
+        for ac in self.aircraft_fleet:
+            ac.update(dt)
+            if ac.status == FlightStatus.CRASHED and self.crashed_aircraft is None:
+                self.crashed_aircraft = ac
+                if ac.assigned_runway and ac.assigned_runway in self.runways:
+                    rwy = self.runways[ac.assigned_runway]
+                    if rwy.current_aircraft == ac.flight_id:
+                        rwy.release()
+
+            if not ac.history_recorded and ac.status == FlightStatus.LANDED:
+                ac.history_recorded = True
+                if ac.assigned_runway and ac.assigned_runway in self.runways:
+                    rwy = self.runways[ac.assigned_runway]
+                    if rwy.current_aircraft == ac.flight_id:
+                        rwy.release()
+                self.flight_history.append({
+                    "flight_id": ac.flight_id,
+                    "model": ac.model,
+                    "size": ac.aircraft_size,
+                    "runway": ac.assigned_runway or "RWY 1",
+                    "wait": int(ac.waiting_time),
+                    "fuel": int(ac.fuel_level),
+                    "is_emergency": ac.is_emergency(),
+                    "emergency_type": ac.emergency_type,
+                    "decision_maker": ac.decision_maker or "AI_AGENT",
+                })
+
+        # Check simultaneous runway rollout conflict (two aircraft rolling on same runway)
+        rolling = [ac for ac in self.aircraft_fleet if ac.status == FlightStatus.ROLLING_LAND]
+        for i in range(len(rolling)):
+            for j in range(i + 1, len(rolling)):
+                if rolling[i].assigned_runway == rolling[j].assigned_runway:
+                    rolling[i].status = FlightStatus.CRASHED
+                    rolling[i].crash_reason = (
+                        f"Runway Conflict: {rolling[i].flight_id} and {rolling[j].flight_id} "
+                        f"collided on {rolling[i].assigned_runway}!"
+                    )
+                    self.crashed_aircraft = rolling[i]
+                    break
+
+        return self.crashed_aircraft
+
