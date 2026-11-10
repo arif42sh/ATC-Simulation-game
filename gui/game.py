@@ -471,3 +471,138 @@ class SkyATCGame:
                 self.log_scroll, self.export_toast, mysql_ok, ai_ready,
             )
 
+    def _find_hovered_runway(self, mx: int, my: int) -> Optional[str]:
+        for r_id, rwy in self.airbase.runways.items():
+            if rwy.distance_to_point(mx, my) <= 30.0:
+                return r_id
+        return None
+
+    def _handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.is_running = False
+                return
+
+            if self.action_panel.handle_event(event):
+                continue
+
+            if self.current_state == GameState.AI_STATS:
+                if event.type == pygame.MOUSEWHEEL:
+                    self._scroll_logs(-event.y)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self._switch_state(GameState.MAIN_MENU)
+
+            elif self.current_state == GameState.LEVEL_SELECT:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self._switch_state(GameState.MAIN_MENU)
+
+            elif self.current_state == GameState.SIMULATION and not self.modal_state:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        self._toggle_pause()
+                        continue
+                    if event.key == pygame.K_ESCAPE:
+                        self._return_to_menu_paused()
+                        continue
+
+                if self.is_paused:
+                    self.drag_state = None
+                    continue
+
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mx, my = event.pos
+                    # 1. Check click on holding aircraft on canvas -> select & start Drag-and-Draw
+                    clicked_ac = None
+                    for ac in self.airbase.aircraft_fleet:
+                        if ac.status == FlightStatus.HOLDING and math.hypot(ac.x - mx, ac.y - my) <= 28.0:
+                            clicked_ac = ac
+                            break
+                    if clicked_ac:
+                        self.selected_aircraft = clicked_ac
+                        self.drag_state = {"aircraft": clicked_ac, "mouse_pos": (mx, my), "hovered_runway": None, "is_valid": True, "reason": ""}
+                        continue
+
+                    # 2. Check click on INCOMING PRIORITY QUEUE sidebar card -> select aircraft
+                    if config.SIDEBAR_X + 20 <= mx <= config.WINDOW_WIDTH - 20 and 148 <= my <= 370:
+                        pending_ranked = self.airbase.get_ranked_pending_aircraft()
+                        card_idx = (my - 148) // 54
+                        if 0 <= card_idx < len(pending_ranked[:4]):
+                            self.selected_aircraft = pending_ranked[card_idx]
+                            self.sound.play("click")
+                        continue
+
+                    # 3. Click-Plane-Then-Click-Runway support on radar canvas
+                    if mx < config.SIDEBAR_X and self.selected_aircraft and self.selected_aircraft.status == FlightStatus.HOLDING:
+                        r_id = self._find_hovered_runway(mx, my)
+                        if r_id:
+                            sel_ac = self.selected_aircraft
+                            ok, msg = self.agent.override_assignment(sel_ac.flight_id, r_id)
+                            if ok:
+                                self.sound.play("click")
+                                self.selected_aircraft = None
+                                self.override_mode = False
+                                self.renderer.add_floating_text(msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CYAN)
+                            else:
+                                self.sound.play("warning")
+                                self.renderer.add_floating_text(msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CRITICAL_RED)
+                            self._rebuild_buttons()
+                        else:
+                            self.selected_aircraft = None
+
+                elif event.type == pygame.MOUSEMOTION and self.drag_state:
+                    mx, my = event.pos
+                    r_id = self._find_hovered_runway(mx, my)
+                    is_valid, reason = True, ""
+                    if r_id:
+                        ac = self.drag_state["aircraft"]
+                        test_plan = {"assignments": [{"flight_id": ac.flight_id, "priority": 1, "assigned_runway": r_id, "action": "AUTHORIZE_LANDING"}]}
+                        ok, issues, _, val_code = self.agent.validator.validate_plan(test_plan, self.agent.observer.observe())
+                        is_valid = ok
+                        if ok:
+                            reason = f"Assign -> {r_id}"
+                        elif val_code == "CONSTRAINT_VIOLATION":
+                            rwy_len = self.airbase.runways[r_id].length_m
+                            reason = f"{r_id} too short ({rwy_len}m < {ac.min_runway_length_m}m)"
+                        elif val_code == "RUNWAY_CONFLICT":
+                            reason = f"{r_id} occupied"
+                        elif val_code == "PRIORITY_VIOLATION":
+                            reason = "Clear emergency flight first!"
+                        elif val_code == "INVALID_RUNWAY":
+                            reason = f"{r_id} unavailable"
+                        else:
+                            reason = issues[0].split(":")[-1].strip()[:36] if issues else "Invalid"
+                    self.drag_state["mouse_pos"] = (mx, my)
+                    self.drag_state["hovered_runway"] = r_id
+                    self.drag_state["is_valid"] = is_valid
+                    self.drag_state["reason"] = reason
+
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.drag_state:
+                    mx, my = event.pos
+                    r_id = self._find_hovered_runway(mx, my)
+                    ac = self.drag_state["aircraft"]
+                    self.drag_state = None
+                    if r_id:
+                        ok, msg = self.agent.override_assignment(ac.flight_id, r_id)
+                        if ok:
+                            self.sound.play("click")
+                            self.selected_aircraft = None
+                            self.override_mode = False
+                            self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CYAN)
+                        else:
+                            self.sound.play("warning")
+                            self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CRITICAL_RED)
+                        self._rebuild_buttons()
+
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        self._on_accept_ai_plan()
+                    elif event.key == pygame.K_h:
+                        self._manual_assign_selected("HOLD")
+                    elif event.key in (pygame.K_1, pygame.K_KP1):
+                        self._manual_assign_selected("RWY 1")
+                    elif event.key in (pygame.K_2, pygame.K_KP2) and "RWY 2" in self.airbase.runways:
+                        self._manual_assign_selected("RWY 2")
+                    elif event.key in (pygame.K_3, pygame.K_KP3) and "RWY 3" in self.airbase.runways:
+                        self._manual_assign_selected("RWY 3")
+                    elif event.key in (pygame.K_4, pygame.K_KP4) and "RWY 4" in self.airbase.runways:
+                        self._manual_assign_selected("RWY 4")
