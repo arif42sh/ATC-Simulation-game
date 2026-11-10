@@ -61,3 +61,20 @@ class ATCAgent:
             "last_validation_msg": "All safety guardrails active",
         }
 
+    def reset_for_level(self, level_id: int):
+        """Resets agent state and syncs level runways with database."""
+        for k in self.stats:
+            self.stats[k] = 0
+        self.reward_system.reset(level_id)
+        self.last_observed_state = {}
+        self.notifications.clear()
+        self._last_decision_id_by_flight.clear()
+        self._last_decision_sig_by_flight.clear()
+        self._logged_aircraft_ids.clear()
+        self.planner.current_plan = None
+        self.ui_state["current_plan"] = None
+        self.ui_state["plan_lines"] = []
+        self.ui_state["reason_badge"] = "Monitoring incoming priority queue..."
+        if self.db_logger:
+            self.db_logger.sync_runways(level_id, self.airbase.runways)
+
