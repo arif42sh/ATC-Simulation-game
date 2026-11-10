@@ -7,11 +7,18 @@ Course: CSE 3202 - Artificial Intelligence Sessional
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any, List
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Detect Pygbag WebAssembly (Emscripten) browser runtime
+IS_WEB = sys.platform == "emscripten"
 
 # -----------------------------------------------------------------------------
 # Base Paths
@@ -19,8 +26,11 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 EXPORT_DIR = BASE_DIR / "exports"
-DATA_DIR.mkdir(exist_ok=True)
-EXPORT_DIR.mkdir(exist_ok=True)
+for _runtime_dir in (DATA_DIR, EXPORT_DIR):
+    try:
+        _runtime_dir.mkdir(exist_ok=True)
+    except OSError:
+        pass
 
 # -----------------------------------------------------------------------------
 # Display & Layout Constants
@@ -288,9 +298,9 @@ REWARDS: Dict[str, int] = {
 }
 
 # -----------------------------------------------------------------------------
-# Database Configuration (MySQL + SQLite Fallback)
+# Database Configuration (MySQL + SQLite Fallback + Browser Memory on Web)
 # -----------------------------------------------------------------------------
-DB_TYPE = os.getenv("DB_TYPE", "mysql")
+DB_TYPE = "memory" if IS_WEB else os.getenv("DB_TYPE", "mysql")
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_USER = os.getenv("DB_USER", "root")

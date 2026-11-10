@@ -61,7 +61,7 @@ class LLMClient:
         self.model = config.AI_MODEL or "gemini-2.5-flash"
         self.decision_engine = decision_engine or DecisionEngine()
 
-        self.sdk_ready = bool(self.api_key and GENAI_SDK_AVAILABLE)
+        self.sdk_ready = bool((not config.IS_WEB) and self.api_key and GENAI_SDK_AVAILABLE)
         self.client = genai.Client(api_key=self.api_key) if self.sdk_ready else None
 
         self.active_mode = "LLM API Ready" if self.sdk_ready else "Local Utility Fallback"

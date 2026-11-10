@@ -5,7 +5,8 @@ Forwards execution to main.py
 =============================================================================
 """
 
+import asyncio
 from main import main
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

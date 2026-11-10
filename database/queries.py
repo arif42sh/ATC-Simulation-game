@@ -6,10 +6,243 @@ SkyATC AI - Database Queries, Analytics & CSV Report Exporter (Module 8)
 
 import csv
 import datetime
+import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import config
 from .db import get_db
+
+
+class _MemoryStore:
+    """Pure-Python 9-table store for WebAssembly (browser) or memory-mode execution."""
+
+    STORAGE_KEY = "skyatc_ai_save_v2"
+
+    def __init__(self):
+        self.aircraft: List[Dict[str, Any]] = []
+        self.runways: Dict[str, Dict[str, Any]] = {}
+        self.missions_requests: List[Dict[str, Any]] = []
+        self.agent_decisions: List[Dict[str, Any]] = []
+        self.player_decisions: List[Dict[str, Any]] = []
+        self.feedback: List[Dict[str, Any]] = []
+        self.simulation_events: List[Dict[str, Any]] = []
+        self.level_history: List[Dict[str, Any]] = []
+        self.reward_history: List[Dict[str, Any]] = []
+        self.saved_landed_offset: int = 0
+        self._load_browser_save()
+
+    def _load_browser_save(self):
+        if not config.IS_WEB:
+            return
+        try:
+            import platform
+            raw = platform.window.localStorage.getItem(self.STORAGE_KEY)
+            if not raw:
+                return
+            data = json.loads(str(raw))
+            history = data.get("level_history", [])
+            if isinstance(history, list):
+                self.level_history = [r for r in history if isinstance(r, dict)]
+            self.saved_landed_offset = max(0, int(data.get("landed_total", 0) or 0))
+        except Exception as exc:
+            print(f"[WEB STORAGE] Could not read localStorage: {exc}")
+
+    def _save_browser_save(self):
+        if not config.IS_WEB:
+            return
+        try:
+            import platform
+            session_landed = sum(1 for a in self.aircraft if a.get("aircraft_status") == "LANDED")
+            payload = {
+                "level_history": self.level_history[-200:],
+                "landed_total": self.saved_landed_offset + session_landed,
+            }
+            platform.window.localStorage.setItem(self.STORAGE_KEY, json.dumps(payload))
+        except Exception as exc:
+            print(f"[WEB STORAGE] Could not write localStorage: {exc}")
+
+    def sync_runways(self, level_id: int, runways: Dict[str, Any]):
+        for r_id, rwy in runways.items():
+            self.runways[r_id] = {
+                "runway_id": r_id,
+                "runway_name": rwy.name,
+                "level_id": level_id,
+                "length_m": rwy.length_m,
+                "runway_status": rwy.status,
+                "current_aircraft_id": rwy.current_aircraft,
+            }
+
+    def log_aircraft_and_request(self, ac_dict: Dict[str, Any]) -> tuple[int, int]:
+        ac_id = len(self.aircraft) + 1
+        emerg_flag = 1 if ac_dict.get("emergency_type", "NONE") != "NONE" else 0
+        self.aircraft.append({
+            "aircraft_id": ac_id,
+            "flight_id": ac_dict["flight_id"],
+            "model": ac_dict.get("model", "B737"),
+            "aircraft_size": ac_dict.get("aircraft_size", "MEDIUM"),
+            "initial_fuel": ac_dict.get("fuel_level", 75.0),
+            "current_fuel": ac_dict.get("fuel_level", 75.0),
+            "emergency_status": emerg_flag,
+            "emergency_type": ac_dict.get("emergency_type", "NONE"),
+            "current_distance": ac_dict.get("distance_nm", 10.0),
+            "aircraft_status": ac_dict.get("status", "HOLDING"),
+        })
+        req_id = len(self.missions_requests) + 1
+        self.missions_requests.append({
+            "request_id": req_id,
+            "aircraft_id": ac_id,
+            "flight_id": ac_dict["flight_id"],
+            "request_type": "LANDING",
+            "waiting_time": ac_dict.get("waiting_time", 0.0),
+            "current_priority": ac_dict.get("priority_score", 0.0),
+            "request_status": "PENDING",
+        })
+        return ac_id, req_id
+
+    def update_aircraft_outcome(self, ac_id: Optional[int], req_id: Optional[int], fuel: float, status: str, wait_sec: float):
+        if ac_id and 1 <= ac_id <= len(self.aircraft):
+            self.aircraft[ac_id - 1]["current_fuel"] = round(fuel, 1)
+            self.aircraft[ac_id - 1]["aircraft_status"] = status
+        if req_id and 1 <= req_id <= len(self.missions_requests):
+            req_status = "COMPLETED" if status == "LANDED" else ("FAILED" if status == "CRASHED" else "ACTIVE")
+            self.missions_requests[req_id - 1]["waiting_time"] = round(wait_sec, 1)
+            self.missions_requests[req_id - 1]["request_status"] = req_status
+
+    def log_agent_decision(
+        self,
+        request_id: Optional[int],
+        flight_id: str,
+        priority: int,
+        assigned_runway: Optional[str],
+        ai_reason: str,
+        decision_source: str,
+        validation_status: str,
+        decision_time_ms: float,
+    ) -> int:
+        dec_id = len(self.agent_decisions) + 1
+        self.agent_decisions.append({
+            "decision_id": dec_id,
+            "request_id": request_id,
+            "flight_id": flight_id,
+            "recommended_priority": priority,
+            "assigned_runway_id": assigned_runway,
+            "ai_reason": ai_reason,
+            "decision_source": decision_source,
+            "validation_status": validation_status,
+            "decision_time_ms": round(decision_time_ms, 2),
+            "decision_timestamp": datetime.datetime.now().isoformat(),
+        })
+        return dec_id
+
+    def update_agent_decision(
+        self,
+        decision_id: int,
+        priority: int,
+        assigned_runway: Optional[str],
+        ai_reason: str,
+        decision_source: str,
+        validation_status: str,
+        decision_time_ms: float,
+    ):
+        if 1 <= decision_id <= len(self.agent_decisions):
+            rec = self.agent_decisions[decision_id - 1]
+            rec.update({
+                "recommended_priority": priority,
+                "assigned_runway_id": assigned_runway,
+                "ai_reason": ai_reason,
+                "decision_source": decision_source,
+                "validation_status": validation_status,
+                "decision_time_ms": round(decision_time_ms, 2),
+            })
+
+    def log_player_decision(
+        self,
+        decision_id: Optional[int],
+        aircraft_id: Optional[int],
+        flight_id: str,
+        selected_runway: Optional[str],
+        decision_type: str,
+    ):
+        self.player_decisions.append({
+            "player_decision_id": len(self.player_decisions) + 1,
+            "decision_id": decision_id,
+            "selected_aircraft_id": aircraft_id,
+            "flight_id": flight_id,
+            "selected_runway_id": selected_runway,
+            "decision_type": decision_type,
+        })
+
+    def log_feedback(
+        self,
+        decision_id: Optional[int],
+        flight_id: str,
+        validation_result: str,
+        execution_result: str,
+        feedback_details: str,
+    ):
+        self.feedback.append({
+            "feedback_id": len(self.feedback) + 1,
+            "decision_id": decision_id,
+            "flight_id": flight_id,
+            "validation_result": validation_result,
+            "execution_result": execution_result,
+            "feedback_details": feedback_details,
+        })
+
+    def log_event(self, level_id: int, event_type: str, description: str, aircraft_id: str = "", runway_id: str = ""):
+        self.simulation_events.append({
+            "event_id": len(self.simulation_events) + 1,
+            "level_id": level_id,
+            "aircraft_id": aircraft_id,
+            "runway_id": runway_id,
+            "event_type": event_type,
+            "event_description": description,
+        })
+
+    def log_level_history(self, level_id: int, status: str, final_score: int, landings: int, emergencies: int):
+        self.level_history.append({
+            "level_history_id": len(self.level_history) + 1,
+            "level_id": int(level_id),
+            "completion_status": status,
+            "final_score": int(final_score),
+            "total_landings": int(landings),
+            "total_emergencies": int(emergencies),
+        })
+        self._save_browser_save()
+
+    def log_reward(self, level_id: int, flight_id: str, event_type: str, reward_points: int):
+        self.reward_history.append({
+            "reward_id": len(self.reward_history) + 1,
+            "level_id": level_id,
+            "aircraft_id": flight_id,
+            "event_type": event_type,
+            "reward_points": int(reward_points),
+        })
+
+    def get_global_counters(self) -> Dict[str, int]:
+        session_landed = sum(1 for a in self.aircraft if a.get("aircraft_status") == "LANDED")
+        best_score = max([0] + [int(r.get("final_score", 0)) for r in self.level_history])
+        return {
+            "aircraft_landed": self.saved_landed_offset + session_landed,
+            "hi_score": max(0, best_score),
+        }
+
+    def get_export_rows(self) -> List[Dict[str, Any]]:
+        pd_by_dec: Dict[int, Dict[str, Any]] = {}
+        for pd in self.player_decisions:
+            did = pd.get("decision_id")
+            if did is not None:
+                pd_by_dec[did] = pd
+
+        rows: List[Dict[str, Any]] = []
+        for ad in reversed(self.agent_decisions):
+            pd = pd_by_dec.get(ad["decision_id"], {})
+            rows.append({
+                **ad,
+                "player_decision_type": pd.get("decision_type", "NONE"),
+                "player_runway": pd.get("selected_runway_id", ""),
+            })
+        return rows
 
 
 class DatabaseLogger:
@@ -17,6 +250,7 @@ class DatabaseLogger:
 
     def __init__(self):
         self.db = get_db()
+        self._mem = _MemoryStore() if self.db.is_memory() else None
 
     def is_mysql_connected(self) -> bool:
         return self.db.is_mysql()
@@ -27,6 +261,9 @@ class DatabaseLogger:
 
     def sync_runways(self, level_id: int, runways: Dict[str, Any]):
         """Persists runway definitions and current status for the active level."""
+        if self._mem is not None:
+            self._mem.sync_runways(level_id, runways)
+            return
         for r_id, rwy in runways.items():
             existing = self.db.fetchone("SELECT runway_id FROM runways WHERE runway_id = %s", (r_id,))
             if existing:
@@ -45,6 +282,8 @@ class DatabaseLogger:
 
     def log_aircraft_and_request(self, ac_dict: Dict[str, Any]) -> tuple[int, int]:
         """Inserts into aircraft & missions_requests; returns (aircraft_id, request_id)."""
+        if self._mem is not None:
+            return self._mem.log_aircraft_and_request(ac_dict)
         emerg_flag = 1 if ac_dict.get("emergency_type", "NONE") != "NONE" else 0
         ac_id = self.db.execute(
             """INSERT INTO aircraft
@@ -78,6 +317,9 @@ class DatabaseLogger:
         return ac_id, req_id
 
     def update_aircraft_outcome(self, ac_id: Optional[int], req_id: Optional[int], fuel: float, status: str, wait_sec: float):
+        if self._mem is not None:
+            self._mem.update_aircraft_outcome(ac_id, req_id, fuel, status, wait_sec)
+            return
         if ac_id:
             self.db.execute(
                 "UPDATE aircraft SET current_fuel = %s, aircraft_status = %s WHERE aircraft_id = %s",
@@ -101,6 +343,11 @@ class DatabaseLogger:
         validation_status: str,
         decision_time_ms: float,
     ) -> int:
+        if self._mem is not None:
+            return self._mem.log_agent_decision(
+                request_id, flight_id, priority, assigned_runway, ai_reason,
+                decision_source, validation_status, decision_time_ms,
+            )
         return self.db.execute(
             """INSERT INTO agent_decisions
                (request_id, flight_id, recommended_priority, assigned_runway_id, ai_reason, decision_source, validation_status, decision_time_ms)
@@ -118,6 +365,12 @@ class DatabaseLogger:
         validation_status: str,
         decision_time_ms: float,
     ):
+        if self._mem is not None:
+            self._mem.update_agent_decision(
+                decision_id, priority, assigned_runway, ai_reason,
+                decision_source, validation_status, decision_time_ms,
+            )
+            return
         self.db.execute(
             """UPDATE agent_decisions
                SET recommended_priority = %s, assigned_runway_id = %s, ai_reason = %s,
@@ -134,6 +387,9 @@ class DatabaseLogger:
         selected_runway: Optional[str],
         decision_type: str,  # 'ACCEPT_AI', 'OVERRIDE', 'TIMEOUT_AUTO_EXECUTE'
     ):
+        if self._mem is not None:
+            self._mem.log_player_decision(decision_id, aircraft_id, flight_id, selected_runway, decision_type)
+            return
         self.db.execute(
             """INSERT INTO player_decisions
                (decision_id, selected_aircraft_id, flight_id, selected_runway_id, decision_type)
@@ -149,6 +405,9 @@ class DatabaseLogger:
         execution_result: str,
         feedback_details: str,
     ):
+        if self._mem is not None:
+            self._mem.log_feedback(decision_id, flight_id, validation_result, execution_result, feedback_details)
+            return
         self.db.execute(
             """INSERT INTO feedback (decision_id, flight_id, validation_result, execution_result, feedback_details)
                VALUES (%s, %s, %s, %s, %s)""",
@@ -156,6 +415,9 @@ class DatabaseLogger:
         )
 
     def log_event(self, level_id: int, event_type: str, description: str, aircraft_id: str = "", runway_id: str = ""):
+        if self._mem is not None:
+            self._mem.log_event(level_id, event_type, description, aircraft_id, runway_id)
+            return
         self.db.execute(
             """INSERT INTO simulation_events (level_id, aircraft_id, runway_id, event_type, event_description)
                VALUES (%s, %s, %s, %s, %s)""",
@@ -163,6 +425,9 @@ class DatabaseLogger:
         )
 
     def log_level_history(self, level_id: int, status: str, final_score: int, landings: int, emergencies: int):
+        if self._mem is not None:
+            self._mem.log_level_history(level_id, status, final_score, landings, emergencies)
+            return
         self.db.execute(
             """INSERT INTO level_history (level_id, completion_status, final_score, total_landings, total_emergencies)
                VALUES (%s, %s, %s, %s, %s)""",
@@ -170,6 +435,9 @@ class DatabaseLogger:
         )
 
     def log_reward(self, level_id: int, flight_id: str, event_type: str, reward_points: int):
+        if self._mem is not None:
+            self._mem.log_reward(level_id, flight_id, event_type, reward_points)
+            return
         self.db.execute(
             """INSERT INTO reward_history (level_id, aircraft_id, event_type, reward_points)
                VALUES (%s, %s, %s, %s)""",
@@ -182,6 +450,8 @@ class DatabaseLogger:
 
     def get_global_counters(self) -> Dict[str, int]:
         """Returns global Aircraft Landed & Hi-Score for top HUD."""
+        if self._mem is not None:
+            return self._mem.get_global_counters()
         landed_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE aircraft_status = 'LANDED'")
         hi_row = self.db.fetchone("SELECT MAX(final_score) as best FROM level_history")
         return {
@@ -191,10 +461,13 @@ class DatabaseLogger:
 
     def get_level_progression(self) -> Dict[str, Any]:
         """Returns unlocked levels and per-level best stats from level_history."""
-        rows = self.db.fetchall(
-            """SELECT level_id, completion_status, final_score, total_landings, total_emergencies
-               FROM level_history ORDER BY level_history_id ASC"""
-        )
+        if self._mem is not None:
+            rows = self._mem.level_history
+        else:
+            rows = self.db.fetchall(
+                """SELECT level_id, completion_status, final_score, total_landings, total_emergencies
+                   FROM level_history ORDER BY level_history_id ASC"""
+            )
         completed_levels = set()
         best_by_level: Dict[int, Dict[str, Any]] = {}
 
@@ -227,55 +500,105 @@ class DatabaseLogger:
 
     def get_stats_dashboard_data(self) -> Dict[str, Any]:
         """Aggregates all metrics for the AI & DB STATS screen."""
-        total_req_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM missions_requests")
-        landed_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE aircraft_status = 'LANDED'")
-        emerg_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE emergency_status = 1 AND aircraft_status = 'LANDED'")
-        reward_row = self.db.fetchone("SELECT SUM(reward_points) as pts FROM reward_history")
+        if self._mem is not None:
+            mem = self._mem
+            total_missions = len(mem.missions_requests)
+            successful_landings = sum(1 for a in mem.aircraft if a["aircraft_status"] == "LANDED")
+            emergencies_handled = sum(
+                1 for a in mem.aircraft if a["emergency_status"] == 1 and a["aircraft_status"] == "LANDED"
+            )
+            accumulated_rewards = sum(int(r["reward_points"]) for r in mem.reward_history)
 
-        total_dec_row = self.db.fetchone("SELECT COUNT(*) as cnt, AVG(decision_time_ms) as avg_ms FROM agent_decisions")
-        val_rej_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM agent_decisions WHERE validation_status != 'VALID'")
-        valid_ai_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM agent_decisions WHERE validation_status = 'VALID'")
+            total_decisions = len(mem.agent_decisions)
+            avg_ms = (
+                sum(float(d["decision_time_ms"]) for d in mem.agent_decisions) / total_decisions
+                if total_decisions
+                else 0.0
+            )
+            val_rejections = sum(1 for d in mem.agent_decisions if d["validation_status"] != "VALID")
+            valid_ai = total_decisions - val_rejections
 
-        p_accept_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'ACCEPT_AI'")
-        p_override_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'OVERRIDE'")
-        p_timeout_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'TIMEOUT_AUTO_EXECUTE'")
+            accepts = sum(1 for p in mem.player_decisions if p["decision_type"] == "ACCEPT_AI")
+            overrides = sum(1 for p in mem.player_decisions if p["decision_type"] == "OVERRIDE")
+            timeouts = sum(1 for p in mem.player_decisions if p["decision_type"] == "TIMEOUT_AUTO_EXECUTE")
 
-        total_missions = int((total_req_row or {}).get("cnt") or 0)
-        successful_landings = int((landed_row or {}).get("cnt") or 0)
-        emergencies_handled = int((emerg_row or {}).get("cnt") or 0)
-        accumulated_rewards = int((reward_row or {}).get("pts") or 0)
+            req_by_id = {mr["request_id"]: mr for mr in mem.missions_requests}
+            ac_by_id = {ac["aircraft_id"]: ac for ac in mem.aircraft}
+            pd_by_dec: Dict[int, str] = {}
+            for pd in mem.player_decisions:
+                did = pd.get("decision_id")
+                if did is not None:
+                    pd_by_dec[did] = pd["decision_type"]
 
-        total_decisions = int((total_dec_row or {}).get("cnt") or 0)
-        avg_ms = float((total_dec_row or {}).get("avg_ms") or 0.0)
-        val_rejections = int((val_rej_row or {}).get("cnt") or 0)
-        valid_ai = int((valid_ai_row or {}).get("cnt") or 0)
+            score_by_flight: Dict[str, int] = {}
+            for rh in mem.reward_history:
+                fid = rh.get("aircraft_id", "")
+                score_by_flight[fid] = score_by_flight.get(fid, 0) + int(rh.get("reward_points", 0))
 
-        accepts = int((p_accept_row or {}).get("cnt") or 0)
-        overrides = int((p_override_row or {}).get("cnt") or 0)
-        timeouts = int((p_timeout_row or {}).get("cnt") or 0)
+            logs_rows = []
+            for ad in list(reversed(mem.agent_decisions))[:40]:
+                mr = req_by_id.get(ad.get("request_id"), {})
+                ac = ac_by_id.get(mr.get("aircraft_id"), {})
+                logs_rows.append({
+                    "decision_id": ad["decision_id"],
+                    "request_id": ad.get("request_id"),
+                    "flight_id": ad["flight_id"],
+                    "emerg_type": ac.get("emergency_type", "NONE"),
+                    "assigned_runway_id": ad.get("assigned_runway_id"),
+                    "validation_status": ad.get("validation_status", "VALID"),
+                    "player_action": pd_by_dec.get(ad["decision_id"], "AUTO"),
+                    "flight_score": score_by_flight.get(ad["flight_id"], 0),
+                })
+        else:
+            total_req_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM missions_requests")
+            landed_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE aircraft_status = 'LANDED'")
+            emerg_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE emergency_status = 1 AND aircraft_status = 'LANDED'")
+            reward_row = self.db.fetchone("SELECT SUM(reward_points) as pts FROM reward_history")
+
+            total_dec_row = self.db.fetchone("SELECT COUNT(*) as cnt, AVG(decision_time_ms) as avg_ms FROM agent_decisions")
+            val_rej_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM agent_decisions WHERE validation_status != 'VALID'")
+            valid_ai_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM agent_decisions WHERE validation_status = 'VALID'")
+
+            p_accept_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'ACCEPT_AI'")
+            p_override_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'OVERRIDE'")
+            p_timeout_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'TIMEOUT_AUTO_EXECUTE'")
+
+            total_missions = int((total_req_row or {}).get("cnt") or 0)
+            successful_landings = int((landed_row or {}).get("cnt") or 0)
+            emergencies_handled = int((emerg_row or {}).get("cnt") or 0)
+            accumulated_rewards = int((reward_row or {}).get("pts") or 0)
+
+            total_decisions = int((total_dec_row or {}).get("cnt") or 0)
+            avg_ms = float((total_dec_row or {}).get("avg_ms") or 0.0)
+            val_rejections = int((val_rej_row or {}).get("cnt") or 0)
+            valid_ai = int((valid_ai_row or {}).get("cnt") or 0)
+
+            accepts = int((p_accept_row or {}).get("cnt") or 0)
+            overrides = int((p_override_row or {}).get("cnt") or 0)
+            timeouts = int((p_timeout_row or {}).get("cnt") or 0)
+
+            # Recent detailed database logs (MySQL 8 ONLY_FULL_GROUP_BY & SQLite compatible)
+            logs_rows = self.db.fetchall(
+                """SELECT ad.decision_id, ad.request_id, ad.flight_id,
+                          COALESCE(ac.emergency_type, 'NONE') as emerg_type,
+                          ad.assigned_runway_id, ad.validation_status,
+                          COALESCE((SELECT pd.decision_type FROM player_decisions pd
+                                    WHERE pd.decision_id = ad.decision_id
+                                    ORDER BY pd.player_decision_id DESC LIMIT 1), 'AUTO') as player_action,
+                          COALESCE((SELECT SUM(rh.reward_points) FROM reward_history rh
+                                    WHERE rh.aircraft_id = ad.flight_id), 0) as flight_score
+                   FROM agent_decisions ad
+                   LEFT JOIN missions_requests mr ON ad.request_id = mr.request_id
+                   LEFT JOIN aircraft ac ON mr.aircraft_id = ac.aircraft_id
+                   ORDER BY ad.decision_id DESC
+                   LIMIT 40"""
+            )
 
         landing_rate = round((successful_landings / total_missions) * 100.0, 1) if total_missions else 0.0
         ai_accuracy = round((valid_ai / total_decisions) * 100.0, 1) if total_decisions else 100.0
         player_total = accepts + overrides
         player_accuracy = round((accepts / player_total) * 100.0, 1) if player_total else 100.0
         rej_rate = round((val_rejections / total_decisions) * 100.0, 1) if total_decisions else 0.0
-
-        # Recent detailed database logs (MySQL 8 ONLY_FULL_GROUP_BY & SQLite compatible)
-        logs_rows = self.db.fetchall(
-            """SELECT ad.decision_id, ad.request_id, ad.flight_id,
-                      COALESCE(ac.emergency_type, 'NONE') as emerg_type,
-                      ad.assigned_runway_id, ad.validation_status,
-                      COALESCE((SELECT pd.decision_type FROM player_decisions pd
-                                WHERE pd.decision_id = ad.decision_id
-                                ORDER BY pd.player_decision_id DESC LIMIT 1), 'AUTO') as player_action,
-                      COALESCE((SELECT SUM(rh.reward_points) FROM reward_history rh
-                                WHERE rh.aircraft_id = ad.flight_id), 0) as flight_score
-               FROM agent_decisions ad
-               LEFT JOIN missions_requests mr ON ad.request_id = mr.request_id
-               LEFT JOIN aircraft ac ON mr.aircraft_id = ac.aircraft_id
-               ORDER BY ad.decision_id DESC
-               LIMIT 40"""
-        )
 
         recent_logs: List[Dict[str, Any]] = []
         for r in logs_rows:
@@ -317,21 +640,28 @@ class DatabaseLogger:
 
     def export_logs_to_csv(self) -> Path:
         """Exports database operational logs & stats to a CSV report file."""
-        config.EXPORT_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_path = config.EXPORT_DIR / f"skyatc_report_{stamp}.csv"
+        export_dir = config.EXPORT_DIR
+        try:
+            export_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            export_dir = Path("/tmp")
+        out_path = export_dir / f"skyatc_report_{stamp}.csv"
 
         stats = self.get_stats_dashboard_data()
-        rows = self.db.fetchall(
-            """SELECT ad.decision_id, ad.request_id, ad.flight_id, ad.recommended_priority,
-                      ad.assigned_runway_id, ad.decision_source, ad.validation_status,
-                      ad.decision_time_ms, ad.ai_reason, ad.decision_timestamp,
-                      COALESCE(pd.decision_type, 'NONE') as player_decision_type,
-                      COALESCE(pd.selected_runway_id, '') as player_runway
-               FROM agent_decisions ad
-               LEFT JOIN player_decisions pd ON ad.decision_id = pd.decision_id
-               ORDER BY ad.decision_id DESC"""
-        )
+        if self._mem is not None:
+            rows = self._mem.get_export_rows()
+        else:
+            rows = self.db.fetchall(
+                """SELECT ad.decision_id, ad.request_id, ad.flight_id, ad.recommended_priority,
+                          ad.assigned_runway_id, ad.decision_source, ad.validation_status,
+                          ad.decision_time_ms, ad.ai_reason, ad.decision_timestamp,
+                          COALESCE(pd.decision_type, 'NONE') as player_decision_type,
+                          COALESCE(pd.selected_runway_id, '') as player_runway
+                   FROM agent_decisions ad
+                   LEFT JOIN player_decisions pd ON ad.decision_id = pd.decision_id
+                   ORDER BY ad.decision_id DESC"""
+            )
 
         with open(out_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -361,5 +691,12 @@ class DatabaseLogger:
                     r.get("ai_reason"),
                     r.get("decision_timestamp"),
                 ])
+
+        if config.IS_WEB:
+            try:
+                import platform
+                platform.window.MM.download(str(out_path))
+            except Exception as exc:
+                print(f"[WEB EXPORT] Browser download unavailable: {exc}")
 
         return out_path

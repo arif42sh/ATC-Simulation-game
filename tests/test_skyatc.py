@@ -312,6 +312,60 @@ class TestSkyATCV2(unittest.TestCase):
         self.assertGreaterEqual(heavy_only.hitl_decision_timer, 2.0)
         self.assertEqual(self.agent.stats["timeout_auto_executes"], 0)
 
+    def test_web_memory_db_and_pure_python_audio_fallback(self):
+        """Verifies WebAssembly pure-Python memory DB persistence & numpy-free SFX synthesis."""
+        import gui.audio as audio_mod
+
+        prev_inst = db_mod._db_instance
+        prev_type = config.DB_TYPE
+        prev_numpy = audio_mod.NUMPY_AVAILABLE
+        csv_path = None
+        try:
+            config.DB_TYPE = "memory"
+            db_mod._db_instance = None
+            mem_logger = DatabaseLogger()
+            self.assertEqual(mem_logger.db.engine_type, "memory")
+
+            ab = Airbase(level_id=1)
+            mem_agent = ATCAgent(ab, mem_logger)
+            mem_agent.reset_for_level(1)
+            em = Aircraft("BG-WEB", model="B737", fuel_level=14.0, emergency_type=EmergencyType.CRITICAL_FUEL)
+            ab.add_aircraft(em)
+            mem_agent.step(0.2)
+            self.assertTrue(mem_agent.accept_ai_plan())
+
+            mem_logger.update_aircraft_outcome(em.db_aircraft_id, em.db_request_id, 13.5, FlightStatus.LANDED, 1.0)
+            mem_logger.log_level_history(1, "COMPLETED", 160, 4, 1)
+
+            counters = mem_logger.get_global_counters()
+            self.assertEqual(counters["aircraft_landed"], 1)
+            self.assertEqual(counters["hi_score"], 160)
+
+            prog = mem_logger.get_level_progression()
+            self.assertEqual(prog["completed_levels"], [1])
+            self.assertEqual(prog["max_unlocked"], 2)
+
+            stats = mem_logger.get_stats_dashboard_data()
+            self.assertEqual(stats["total_missions"], 1)
+            self.assertEqual(stats["successful_landings"], 1)
+            self.assertEqual(stats["emergencies_handled"], 1)
+            self.assertGreater(len(stats["recent_logs"]), 0)
+
+            csv_path = mem_logger.export_logs_to_csv()
+            self.assertTrue(csv_path.exists())
+
+            # Pure-Python array('h') synthesis fallback when numpy is absent
+            audio_mod.NUMPY_AVAILABLE = False
+            snd_mgr = audio_mod.SoundManager()
+            if snd_mgr.enabled:
+                self.assertIn("click", snd_mgr.sounds)
+        finally:
+            if csv_path is not None:
+                csv_path.unlink(missing_ok=True)
+            audio_mod.NUMPY_AVAILABLE = prev_numpy
+            config.DB_TYPE = prev_type
+            db_mod._db_instance = prev_inst
+
 
 if __name__ == "__main__":
     unittest.main()

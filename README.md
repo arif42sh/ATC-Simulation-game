@@ -3,6 +3,10 @@
 **Course:** CSE 3202 - Artificial Intelligence Sessional  
 **Team Members:** Md. Arif Shahriar, Ashikur Rahman
 
+## Play Online (Browser Edition)
+Play directly in your browser (WebAssembly powered by Pygbag, no installation needed):  
+**Live Game:** https://arif42sh.github.io/ATC-Simulation-game/
+
 ## Overview
 **SkyATC AI** is a 2D simulation-based AI runway management game built with **Python**, **Pygame**, **Google Gemini (`gemini-2.5-flash` via `google-genai` SDK)**, and **MySQL** (with automatic SQLite fallback).
 

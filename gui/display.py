@@ -163,8 +163,12 @@ class DisplayRenderer:
             pygame.draw.rect(self.screen, (20, 34, 52), box, border_radius=8)
             pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 1, border_radius=8)
 
-            db_txt = "MYSQL CONNECTED" if mysql_ok else "SQLITE FALLBACK"
-            db_col = config.COLOR_PRIMARY_GREEN if mysql_ok else config.COLOR_WARN_AMBER
+            if mysql_ok:
+                db_txt, db_col = "MYSQL CONNECTED", config.COLOR_PRIMARY_GREEN
+            elif config.IS_WEB or config.DB_TYPE.lower() == "memory":
+                db_txt, db_col = "BROWSER STORAGE", config.COLOR_CYAN
+            else:
+                db_txt, db_col = "SQLITE FALLBACK", config.COLOR_WARN_AMBER
             self.screen.blit(self.font_tiny.render(db_txt, True, db_col), (box.x + 14, box.y + 11))
 
             ai_txt = "AI AGENT READY" if ai_ready else "UTILITY AGENT READY"

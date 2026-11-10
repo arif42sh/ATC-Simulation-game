@@ -5,9 +5,15 @@ Supports MySQL (Primary) with automatic SQLite fallback and V2 migration.
 =============================================================================
 """
 
-import sqlite3
 from typing import Optional, List
 import config
+
+try:
+    import sqlite3
+    SQLITE_AVAILABLE = True
+except ImportError:
+    sqlite3 = None
+    SQLITE_AVAILABLE = False
 
 try:
     import pymysql
@@ -18,8 +24,8 @@ except ImportError:
 
 class DatabaseManager:
     """
-    Unified MySQL/SQLite persistence engine implementing the 9 tables specified
-    in Update_report_V2 Section 12.2-12.3.
+    Unified MySQL/SQLite/Web-Memory persistence engine implementing the 9 tables
+    specified in Update_report_V2 Section 12.2-12.3.
     """
 
     SCHEMA_VERSION = "v2_report"
@@ -31,7 +37,13 @@ class DatabaseManager:
         self._create_schema()
 
     def _init_connection(self):
-        """Connects to MySQL first (2s timeout); gracefully falls back to SQLite."""
+        """Connects to MySQL first (2s timeout); falls back to SQLite or Web memory."""
+        if config.IS_WEB or config.DB_TYPE.lower() == "memory":
+            self.connection = None
+            self.engine_type = "memory"
+            print("[DATABASE] Browser memory/localStorage engine active.")
+            return
+
         if config.DB_TYPE.lower() == "mysql" and PYMYSQL_AVAILABLE:
             try:
                 self.connection = pymysql.connect(
@@ -84,11 +96,16 @@ class DatabaseManager:
             except Exception as exc:
                 print(f"[DATABASE] MySQL unavailable ({exc}); falling back to SQLite.")
 
-        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(str(config.SQLITE_DB_PATH), check_same_thread=False, timeout=3.0)
-        self.connection.row_factory = sqlite3.Row
-        self.engine_type = "sqlite"
-        print(f"[DATABASE] SQLite connected: {config.SQLITE_DB_PATH}")
+        if SQLITE_AVAILABLE and sqlite3 is not None:
+            config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+            self.connection = sqlite3.connect(str(config.SQLITE_DB_PATH), check_same_thread=False, timeout=3.0)
+            self.connection.row_factory = sqlite3.Row
+            self.engine_type = "sqlite"
+            print(f"[DATABASE] SQLite connected: {config.SQLITE_DB_PATH}")
+        else:
+            self.connection = None
+            self.engine_type = "memory"
+            print("[DATABASE] SQLite unavailable; using in-memory storage fallback.")
 
     def _is_v2_schema_active(self, cursor) -> bool:
         """Checks if existing database already carries the V2 9-table schema."""
@@ -104,6 +121,8 @@ class DatabaseManager:
 
     def _create_schema(self):
         """Creates all 9 tables for V2, cleanly migrating any legacy V1 tables."""
+        if self.engine_type == "memory" or not self.connection:
+            return
         auto_inc = "AUTO_INCREMENT" if self.engine_type == "mysql" else "AUTOINCREMENT"
         ts_default = "CURRENT_TIMESTAMP"
 
@@ -262,6 +281,9 @@ class DatabaseManager:
 
     def is_mysql(self) -> bool:
         return self.engine_type == "mysql"
+
+    def is_memory(self) -> bool:
+        return self.engine_type == "memory"
 
     def execute(self, query: str, params: tuple = ()) -> int:
         if not self.connection:

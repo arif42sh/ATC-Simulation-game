@@ -11,3 +11,6 @@ __pycache__/
 *.db
 *.sqlite*
 exports/*.csv
+
+# Pygbag web build outputs
+build/

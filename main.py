@@ -1,31 +1,41 @@
+# /// script
+# dependencies = [
+#     "pygame-ce",
+# ]
+# ///
 """
 =============================================================================
 SkyATC AI - An Intelligent Runway Management Agent (V2)
 Course: CSE 3202 - Artificial Intelligence Sessional
 Team Members: Md. Arif Shahriar, Ashikur Rahman
-Main Application Entry Point
+Main Application Entry Point (Desktop + Browser WebAssembly via Pygbag)
 =============================================================================
 """
 
 import argparse
+import asyncio
 from typing import Optional
+import config
 from environment.airbase import Airbase
 from environment.events import EventManager
 from agent.agent import ATCAgent
 from database.queries import DatabaseLogger
 
 
-def run_gui_simulation(initial_level: Optional[int] = None):
+async def run_gui_simulation(initial_level: Optional[int] = None):
     """Launches the interactive Pygame SkyATC AI V2 application."""
     import traceback
     try:
+        import pygame
         from gui.game import SkyATCGame
+
+        pygame.init()
         print("=" * 70)
         print(" SkyATC AI V2 - Intelligent Runway Management (CSE 3202)")
         print(" Controls: Drag Plane->Runway or [1]-[4] Override | [Space] Accept AI | [P] Pause")
         print("=" * 70)
         game = SkyATCGame(initial_level=initial_level)
-        game.run()
+        await game.run_async()
     except Exception:
         print("\n[CRITICAL ERROR] Simulation stopped with exception:")
         traceback.print_exc()
@@ -79,17 +89,17 @@ def run_headless_evaluation():
     print("=" * 80)
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="SkyATC AI V2 - Intelligent Runway Management Agent")
     parser.add_argument("--headless", action="store_true", help="Run automated headless evaluation benchmark")
     parser.add_argument("--level", type=int, default=None, help="Start directly at level 1-20")
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
-    if args.headless:
+    if args.headless and not config.IS_WEB:
         run_headless_evaluation()
     else:
-        run_gui_simulation(initial_level=args.level)
+        await run_gui_simulation(initial_level=args.level)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

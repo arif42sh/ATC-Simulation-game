@@ -6,6 +6,7 @@ Pause/0.5x-1x-2x Speed, Modals, Audio SFX, and AI & DB Stats Screen.
 =============================================================================
 """
 
+import asyncio
 import sys
 import math
 from typing import Optional, List, Dict, Any
@@ -101,8 +102,9 @@ class SkyATCGame:
                        bg_color=(36, 92, 168), hover_color=(52, 122, 212), border_color=config.COLOR_CYAN, font_size=15),
                 Button(bx, 485, bw, bh, "AI & DB STATS", lambda: self._switch_state(GameState.AI_STATS),
                        bg_color=(165, 96, 28), hover_color=(205, 122, 38), border_color=config.COLOR_WARN_AMBER, font_size=15),
-                Button(bx, 545, bw, bh, "EXIT", self._on_exit,
-                       bg_color=(92, 42, 46), hover_color=(135, 56, 60), border_color=config.COLOR_CRITICAL_RED, font_size=15),
+                Button(bx, 545, bw, bh, "EXIT (DESKTOP)" if config.IS_WEB else "EXIT", self._on_exit,
+                       bg_color=(92, 42, 46), hover_color=(135, 56, 60), border_color=config.COLOR_CRITICAL_RED,
+                       font_size=14 if config.IS_WEB else 15, enabled=not config.IS_WEB),
             ])
 
         elif self.current_state == GameState.LEVEL_SELECT:
@@ -358,13 +360,17 @@ class SkyATCGame:
     def _on_export_csv(self):
         self.sound.play("click")
         out_path = self.db_logger.export_logs_to_csv()
-        self.export_toast = f"Report exported successfully: exports/{out_path.name}"
+        self.export_toast = (
+            f"CSV downloaded: {out_path.name}"
+            if config.IS_WEB
+            else f"Report exported successfully: exports/{out_path.name}"
+        )
 
     # -------------------------------------------------------------------------
     # Main Simulation Loop & Event Dispatch
     # -------------------------------------------------------------------------
 
-    def run(self):
+    async def run_async(self):
         while self.is_running:
             raw_dt = min(self.clock.tick(config.FPS) / 1000.0, 0.08)
             dt = raw_dt * self.sim_speed
@@ -400,10 +406,15 @@ class SkyATCGame:
             self._render_current_screen()
             self.action_panel.draw(self.screen)
             pygame.display.flip()
+            await asyncio.sleep(0)
 
         self.db_logger.db.close()
         pygame.quit()
-        sys.exit()
+        if not config.IS_WEB:
+            sys.exit()
+
+    def run(self):
+        asyncio.run(self.run_async())
 
     def _trigger_crash_modal(self, crashed_ac: Aircraft):
         self.sound.play("warning")
@@ -479,6 +490,9 @@ class SkyATCGame:
 
     def _handle_events(self):
         for event in pygame.event.get():
+            if config.IS_WEB and not self.sound.enabled and event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
+                self.sound.unlock_audio()
+
             if event.type == pygame.QUIT:
                 self.is_running = False
                 return
