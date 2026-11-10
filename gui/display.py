@@ -359,3 +359,60 @@ class DisplayRenderer:
     # SCREEN 1: MAIN MENU
     # =========================================================================
 
+    def render_main_menu(self, airbase: Airbase, global_stats: Dict[str, int], mysql_ok: bool, ai_ready: bool):
+        self.screen.blit(self._terrain_cache, (0, 0))
+        self._draw_airbase_tarmac_and_runways(airbase)
+
+        # Ambient decorative orbiting aircraft on Main Menu (matching Mockup 1)
+        demo_planes = [
+            (460 + 170 * math.cos(self._menu_demo_angle), 185 + 35 * math.sin(self._menu_demo_angle), (205, 45, 50), True, "BG-101 12%"),
+            (215, 290, (225, 175, 40), False, ""),
+            (175, 445, (215, 222, 232), False, ""),
+            (250, 565, (205, 215, 225), False, ""),
+            (415, 470, (68, 128, 225), False, ""),
+            (785, 360, (195, 75, 165), False, ""),
+        ]
+        for px, py, col, is_em, label in demo_planes:
+            if is_em:
+                pulse_r = int(26 + 5 * math.sin(self.pulse_phase))
+                pygame.draw.circle(self.screen, (225, 50, 56), (int(px), int(py)), pulse_r, 3)
+                pygame.draw.circle(self.screen, (225, 50, 56), (int(px), int(py)), pulse_r - 9, 2)
+                lbl_s = self.font_small.render(label, True, (255, 110, 110))
+                self.screen.blit(lbl_s, (int(px + 28), int(py - 20)))
+            self._draw_plane_sprite(px, py, 20.0 if not is_em else 0.0, col, scale=1.1)
+
+        # Soft dark vignette overlay behind center menu
+        overlay = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        pygame.draw.rect(overlay, (10, 20, 30, 105), (0, 0, config.WINDOW_WIDTH, config.WINDOW_HEIGHT))
+        self.screen.blit(overlay, (0, 0))
+
+        self._draw_top_hud_bar(
+            landed_count=global_stats.get("aircraft_landed", 0),
+            score_label="HI-SCORE",
+            score_val=global_stats.get("hi_score", 0),
+            mysql_ok=mysql_ok,
+            ai_ready=ai_ready,
+        )
+
+        # Hero Title: SKYATC (white) + AI (cyan)
+        cx = config.WINDOW_WIDTH // 2
+        t1 = self.font_hero.render("SKYATC ", True, config.COLOR_WHITE)
+        t2 = self.font_hero.render("AI", True, config.COLOR_CYAN)
+        total_w = t1.get_width() + t2.get_width()
+        tx = cx - total_w // 2
+        self.screen.blit(t1, (tx, 175))
+        self.screen.blit(t2, (tx + t1.get_width(), 175))
+
+        sub = self.font_sub.render("INTELLIGENT RUNWAY MANAGEMENT", True, config.COLOR_WHITE)
+        self.screen.blit(sub, sub.get_rect(center=(cx, 250)))
+
+        footer = self.font_tiny.render(
+            "CSE 3202 AI Sessional  |  Md. Arif Shahriar & Ashikur Rahman  |  Gemini 2.5 Flash + Utility Agent",
+            True, config.COLOR_TEXT_MUTED,
+        )
+        self.screen.blit(footer, footer.get_rect(center=(cx, config.WINDOW_HEIGHT - 28)))
+
+    # =========================================================================
+    # SCREEN 2: SELECT LEVEL (01 - 20 SEQUENTIAL)
+    # =========================================================================
+
