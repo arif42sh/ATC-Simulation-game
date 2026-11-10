@@ -310,3 +310,52 @@ class DisplayRenderer:
         pygame.draw.rect(self.screen, st_col, pill, 1, border_radius=4)
         self.screen.blit(lbl, (bx + 6, by + 2))
 
+    def _draw_plane_sprite(
+        self,
+        x: float,
+        y: float,
+        heading_deg: float,
+        color: Tuple[int, int, int],
+        scale: float = 1.0,
+    ):
+        """Draws crisp top-down aircraft silhouette matching mockup style."""
+        rad = math.radians(heading_deg)
+        c, s = math.cos(rad), math.sin(rad)
+
+        def pt(fx: float, fy: float) -> Tuple[int, int]:
+            fx *= scale
+            fy *= scale
+            return (int(x + fx * c - fy * s), int(y + fx * s + fy * c))
+
+        pts = [
+            pt(13, 0), pt(5, 3), pt(-1, 14), pt(-4, 13), pt(-5, 3),
+            pt(-11, 6), pt(-13, 0), pt(-11, -6), pt(-5, -3),
+            pt(-4, -13), pt(-1, -14), pt(5, -3),
+        ]
+        pygame.draw.polygon(self.screen, color, pts)
+        pygame.draw.polygon(self.screen, (22, 30, 40), pts, 2)
+
+    def _draw_dotted_line(
+        self,
+        p1: Tuple[float, float],
+        p2: Tuple[float, float],
+        color: Tuple[int, int, int],
+        spacing: int = 9,
+        radius: int = 2,
+    ):
+        x1, y1 = p1
+        x2, y2 = p2
+        dist = math.hypot(x2 - x1, y2 - y1)
+        if dist < 6:
+            return
+        steps = max(1, int(dist // spacing))
+        for i in range(0, steps + 1, 2):
+            t = i / float(steps)
+            px = int(x1 + t * (x2 - x1))
+            py = int(y1 + t * (y2 - y1))
+            pygame.draw.circle(self.screen, color, (px, py), radius)
+
+    # =========================================================================
+    # SCREEN 1: MAIN MENU
+    # =========================================================================
+
