@@ -97,3 +97,40 @@ class DisplayRenderer:
         self._menu_demo_angle = 0.0
         self._build_terrain_cache()
 
+    def _build_terrain_cache(self):
+        """Pre-renders checkered green grass & topographic contour curves for 60 FPS performance."""
+        surf = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT))
+        tile = 48
+        for gx in range(0, config.WINDOW_WIDTH, tile):
+            for gy in range(0, config.WINDOW_HEIGHT, tile):
+                even = ((gx // tile) + (gy // tile)) % 2 == 0
+                col = config.COLOR_GRASS_LIGHT if even else config.COLOR_GRASS_DARK
+                pygame.draw.rect(surf, col, (gx, gy, tile, tile))
+
+        # Topographic contour curves (subtle ambient hills)
+        for idx in range(5):
+            offset = idx * 14
+            pygame.draw.arc(surf, config.COLOR_CONTOUR, (-140 - offset, -90 - offset, 430 + offset * 2, 340 + offset * 2), 4.4, 6.28, 2)
+            pygame.draw.arc(surf, config.COLOR_CONTOUR, (-110 - offset, 520 - offset, 460 + offset * 2, 360 + offset * 2), 0.1, 1.9, 2)
+            pygame.draw.arc(surf, config.COLOR_CONTOUR, (640 - offset, 500 - offset, 460 + offset * 2, 380 + offset * 2), 1.6, 3.6, 2)
+            pygame.draw.arc(surf, config.COLOR_CONTOUR, (760 - offset, -80 - offset, 420 + offset * 2, 320 + offset * 2), 2.5, 4.7, 2)
+
+        self._terrain_cache = surf
+
+    def add_floating_text(self, text: str, x: float, y: float, color: Tuple[int, int, int]):
+        self.floating_texts.append(FloatingText(text, x, y, color))
+
+    def add_touchdown_smoke(self, x: float, y: float):
+        for _ in range(10):
+            self.particles.append(SmokeParticle(x, y))
+
+    def update_vfx(self, dt: float):
+        self.pulse_phase = (self.pulse_phase + dt * 4.5) % (2.0 * math.pi)
+        self._menu_demo_angle = (self._menu_demo_angle + dt * 0.45) % (2.0 * math.pi)
+        self.floating_texts = [f for f in self.floating_texts if f.update(dt)]
+        self.particles = [p for p in self.particles if p.update(dt)]
+
+    # =========================================================================
+    # SHARED TOP STATUS & AIRBASE CANVAS HELPERS
+    # =========================================================================
+
