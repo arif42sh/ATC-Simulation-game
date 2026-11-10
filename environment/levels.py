@@ -118,3 +118,29 @@ class LevelManager:
             )
         return ac
 
+    def trigger_random_runway_event(self):
+        """Triggers temporary maintenance or weather restriction on higher levels."""
+        if random.random() < 0.55:
+            # Put one non-primary available runway under maintenance briefly
+            candidates = [r for r in self.airbase.runways.values() if r.is_available() and r.id != "RWY 1"]
+            if candidates:
+                chosen = random.choice(candidates)
+                chosen.set_maintenance("FOD Sweep & Maintenance", duration_seconds=15.0)
+                self.trigger_banner(
+                    "RUNWAY MAINTENANCE",
+                    f"{chosen.id} temporarily Under Maintenance (15s)",
+                    "RUNWAY",
+                    3.5,
+                )
+        else:
+            cond = random.choice([WeatherCondition.RAIN, WeatherCondition.CROSSWIND, WeatherCondition.CLEAR])
+            wind = self.level_cfg["wind_speed_kts"] + (16.0 if cond == WeatherCondition.CROSSWIND else 0.0)
+            self.airbase.set_weather(cond, wind_speed_kts=wind, wind_direction_deg=random.choice([90.0, 180.0, 270.0]))
+            if cond != WeatherCondition.CLEAR:
+                self.trigger_banner(
+                    "WEATHER UPDATE",
+                    f"{cond} active — Wind {int(wind)} kts",
+                    "WEATHER",
+                    3.5,
+                )
+
