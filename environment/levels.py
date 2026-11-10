@@ -67,3 +67,54 @@ class LevelManager:
         )
         return self.level_cfg
 
+    def trigger_banner(self, title: str, message: str, alert_type: str = "NORMAL", duration: float = 3.5):
+        self.active_banner = {
+            "title": title,
+            "message": message,
+            "type": alert_type,
+            "timer": duration,
+        }
+
+    def spawn_aircraft(self, force_emergency: Optional[bool] = None) -> Aircraft:
+        """Spawns a new incoming aircraft tailored to the current level's difficulty."""
+        flight_id = f"BG-{self.flight_counter}"
+        self.flight_counter += 1
+        self.spawned_count += 1
+
+        # Choose aircraft model & size based on level heavy_chance
+        if random.random() < self.level_cfg["heavy_chance"]:
+            model = random.choice(["B777", "A350", "C17"])
+        elif self.current_level >= 11 and random.random() < 0.30:
+            model = random.choice(["AT72", "C208"])
+        else:
+            model = random.choice(["B737", "A320", "AT72"])
+
+        f_min, f_max = self.level_cfg["fuel_range"]
+        fuel = round(random.uniform(f_min, f_max), 1)
+
+        is_emerg = force_emergency if force_emergency is not None else (random.random() < self.level_cfg["emergency_chance"])
+        emerg = EmergencyType.NONE
+        if is_emerg:
+            emerg = random.choice([
+                EmergencyType.CRITICAL_FUEL,
+                EmergencyType.ENGINE_PROBLEM,
+                EmergencyType.BIRD_STRIKE,
+                EmergencyType.MEDICAL,
+            ])
+            if emerg == EmergencyType.CRITICAL_FUEL:
+                fuel = round(random.uniform(15.5, 19.5), 1)
+            elif emerg == EmergencyType.ENGINE_PROBLEM:
+                fuel = min(fuel, round(random.uniform(26.0, 44.0), 1))
+
+        ac = Aircraft(flight_id=flight_id, model=model, fuel_level=fuel, emergency_type=emerg)
+        self.airbase.add_aircraft(ac)
+
+        if ac.is_emergency():
+            self.trigger_banner(
+                "EMERGENCY INBOUND",
+                f"{flight_id} ({model}) declares {emerg.replace('_', ' ')}! Fuel: {int(fuel)}%",
+                "EMERGENCY",
+                4.0,
+            )
+        return ac
+
