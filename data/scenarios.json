@@ -39,3 +39,42 @@
     "one_runway_occupied": {
       "title": "5. One Runway Occupied (Alternate Assignment)",
       "level_id": 3,
+      "weather": { "condition": "CLEAR", "wind_speed_kts": 10.0, "wind_direction_deg": 90.0, "visibility_km": 10.0 },
+      "aircraft": [
+        { "flight_id": "BG-111", "model": "B737", "fuel_level": 60.0, "emergency_type": "NONE", "pre_assigned_runway": "RWY 1" },
+        { "flight_id": "BG-222", "model": "AT72", "fuel_level": 48.0, "emergency_type": "NONE", "waiting_time": 7.0 }
+      ]
+    },
+    "runway_maintenance_storm": {
+      "title": "6. Runway Unavailable / Storm Diversion",
+      "level_id": 11,
+      "weather": { "condition": "STORM", "wind_speed_kts": 36.0, "wind_direction_deg": 180.0, "visibility_km": 3.0 },
+      "runway_states": { "RWY 2": "UNDER_MAINTENANCE" },
+      "aircraft": [
+        { "flight_id": "BG-401", "model": "B777", "fuel_level": 45.0, "emergency_type": "NONE", "waiting_time": 6.0 },
+        { "flight_id": "BG-402", "model": "AT72", "fuel_level": 55.0, "emergency_type": "NONE", "waiting_time": 4.0 }
+      ]
+    },
+    "heavy_aircraft_runway_length": {
+      "title": "7. Heavy Aircraft Runway Length Constraint (Hard)",
+      "level_id": 12,
+      "weather": { "condition": "CLEAR", "wind_speed_kts": 16.0, "wind_direction_deg": 90.0, "visibility_km": 10.0 },
+      "aircraft": [
+        { "flight_id": "BG-777", "model": "B777", "fuel_level": 42.0, "emergency_type": "NONE", "waiting_time": 5.0 },
+        { "flight_id": "BG-350", "model": "A350", "fuel_level": 36.0, "emergency_type": "ENGINE_PROBLEM", "waiting_time": 3.0 },
+        { "flight_id": "BG-108", "model": "C208", "fuel_level": 60.0, "emergency_type": "NONE", "waiting_time": 4.0 }
+      ]
+    },
+    "expert_4_runways": {
+      "title": "8. Expert 4-Runway Multi-Emergency Traffic",
+      "level_id": 16,
+      "weather": { "condition": "CROSSWIND", "wind_speed_kts": 28.0, "wind_direction_deg": 270.0, "visibility_km": 7.0 },
+      "aircraft": [
+        { "flight_id": "BG-901", "model": "A350", "fuel_level": 14.0, "emergency_type": "CRITICAL_FUEL", "waiting_time": 8.0 },
+        { "flight_id": "BG-902", "model": "B737", "fuel_level": 32.0, "emergency_type": "ENGINE_PROBLEM", "waiting_time": 5.0 },
+        { "flight_id": "BG-903", "model": "A320", "fuel_level": 54.0, "emergency_type": "NONE", "waiting_time": 11.0 },
+        { "flight_id": "BG-904", "model": "AT72", "fuel_level": 62.0, "emergency_type": "NONE", "waiting_time": 4.0 }
+      ]
+    }
+  }
+}
