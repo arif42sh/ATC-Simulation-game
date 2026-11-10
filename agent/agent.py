@@ -182,3 +182,33 @@ class ATCAgent:
 
         self.ui_state["plan_lines"] = lines
 
+    def _execute_timeout_takeover(self, aircraft: Aircraft, current_state: Dict[str, Any]) -> bool:
+        """Autonomous AI takeover when 10-second HITL timer reaches 0."""
+        plan = self.planner.current_plan or self.planner.generate_plan(current_state, trigger_async_llm=False)
+
+        # Re-validate right before execution to guarantee zero stale conflicts
+        is_valid, _, valid_actions, _ = self.validator.validate_plan(plan, current_state)
+        if not is_valid or not valid_actions:
+            plan = self.planner.generate_plan(current_state, trigger_async_llm=False)
+            valid_actions = plan.get("assignments", [])
+
+        chosen_item = next((a for a in valid_actions if a.get("flight_id") == aircraft.flight_id), None)
+        if not chosen_item or chosen_item.get("action") == "HOLD" or not chosen_item.get("assigned_runway"):
+            # Safe hold orbit if no compatible runway is free (award conflict avoidance once per hold)
+            aircraft.hitl_decision_timer = 4.0
+            if not aircraft.hold_conflict_rewarded:
+                aircraft.hold_conflict_rewarded = True
+                self.stats["conflicts_prevented"] += 1
+                self.reward_system.evaluate_action("RUNWAY_CONFLICT_AVOIDED", aircraft.flight_id, "Hold orbit while runways busy")
+            return False
+
+        rwy_id = chosen_item["assigned_runway"]
+        if self.airbase.authorize_landing(aircraft.flight_id, rwy_id):
+            aircraft.decision_maker = "AI_AGENT"
+            self.stats["timeout_auto_executes"] += 1
+            self._record_landing_rewards(aircraft, rwy_id, decision_type="TIMEOUT_AUTO_EXECUTE", is_override=False)
+            self._push_notification(f"Timeout Auto-Execute: {aircraft.flight_id} -> {rwy_id}")
+            self._refresh_plan_after_action()
+            return True
+        return False
+
