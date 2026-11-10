@@ -104,3 +104,44 @@ class Aircraft:
         self.db_aircraft_id: Optional[int] = None
         self.db_request_id: Optional[int] = None
 
+    def _compute_airbase_distance_nm(self) -> float:
+        """Computes approximate distance from airbase center (420, 380) in NM."""
+        px_dist = math.hypot(self.x - 420.0, self.y - 380.0)
+        return round(px_dist / 24.0, 1)
+
+    def assign_runway_geometry(
+        self,
+        runway_id: str,
+        approach_pos: Tuple[float, float],
+        start_pos: Tuple[float, float],
+        end_pos: Tuple[float, float],
+        ux: float,
+        uy: float,
+        angle_deg: float,
+    ):
+        """Clears aircraft out of holding pattern onto final runway intercept."""
+        self.assigned_runway = runway_id
+        self.approach_x, self.approach_y = approach_pos
+        self.rwy_start_x, self.rwy_start_y = start_pos
+        self.rwy_end_x, self.rwy_end_y = end_pos
+        self.rwy_ux = ux
+        self.rwy_uy = uy
+        self.rwy_angle_deg = angle_deg
+        self.status = FlightStatus.INTERCEPT
+        self.hitl_pending = False
+        self.hold_conflict_rewarded = False
+
+    def return_to_holding_orbit(self):
+        """Places aircraft back into holding pattern (used for manual hold)."""
+        if self.status == FlightStatus.HOLDING:
+            self.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
+            return
+        self.assigned_runway = None
+        self.status = FlightStatus.HOLDING
+        self.hitl_pending = True
+        self.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
+        self.altitude_ft = 3800.0
+
+    def is_emergency(self) -> bool:
+        return self.emergency_type != EmergencyType.NONE or self.fuel_level <= config.FUEL_CRITICAL_THRESHOLD
+
