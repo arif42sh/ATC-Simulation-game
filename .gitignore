@@ -1,0 +1,13 @@
+# Environment secrets (keep local .env untracked)
+.env
+
+# Python caches & test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local runtime databases & generated CSV reports
+*.db
+*.sqlite*
+exports/*.csv
