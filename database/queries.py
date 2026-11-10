@@ -108,3 +108,36 @@ class DatabaseLogger:
             (request_id, flight_id, priority, assigned_runway, ai_reason, decision_source, validation_status, round(decision_time_ms, 2)),
         )
 
+    def update_agent_decision(
+        self,
+        decision_id: int,
+        priority: int,
+        assigned_runway: Optional[str],
+        ai_reason: str,
+        decision_source: str,
+        validation_status: str,
+        decision_time_ms: float,
+    ):
+        self.db.execute(
+            """UPDATE agent_decisions
+               SET recommended_priority = %s, assigned_runway_id = %s, ai_reason = %s,
+                   decision_source = %s, validation_status = %s, decision_time_ms = %s
+               WHERE decision_id = %s""",
+            (priority, assigned_runway, ai_reason, decision_source, validation_status, round(decision_time_ms, 2), decision_id),
+        )
+
+    def log_player_decision(
+        self,
+        decision_id: Optional[int],
+        aircraft_id: Optional[int],
+        flight_id: str,
+        selected_runway: Optional[str],
+        decision_type: str,  # 'ACCEPT_AI', 'OVERRIDE', 'TIMEOUT_AUTO_EXECUTE'
+    ):
+        self.db.execute(
+            """INSERT INTO player_decisions
+               (decision_id, selected_aircraft_id, flight_id, selected_runway_id, decision_type)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (decision_id, aircraft_id, flight_id, selected_runway, decision_type),
+        )
+
