@@ -145,3 +145,37 @@ class Aircraft:
     def is_emergency(self) -> bool:
         return self.emergency_type != EmergencyType.NONE or self.fuel_level <= config.FUEL_CRITICAL_THRESHOLD
 
+    def is_active_in_airspace(self) -> bool:
+        return self.status not in (FlightStatus.LANDED, FlightStatus.CRASHED)
+
+    def update(self, dt: float):
+        """Advances waiting time, HITL timer, fuel burn, and 2D motion."""
+        if not self.is_active_in_airspace():
+            return
+
+        if self.status == FlightStatus.HOLDING:
+            self.waiting_time += dt
+            if self.hitl_pending and self.hitl_decision_timer > 0.0:
+                self.hitl_decision_timer = max(0.0, self.hitl_decision_timer - dt)
+
+        # Fuel burn (pauses after touchdown roll)
+        if self.status in (FlightStatus.HOLDING, FlightStatus.INTERCEPT, FlightStatus.APPROACHING):
+            burn_rate = (
+                config.FUEL_CONSUMPTION_RATE_HOLDING
+                if self.status == FlightStatus.HOLDING
+                else config.FUEL_CONSUMPTION_RATE_APPROACH
+            )
+            self.fuel_level = max(0.0, self.fuel_level - burn_rate * dt)
+
+            if self.fuel_level <= config.FUEL_CRITICAL_THRESHOLD and self.emergency_type == EmergencyType.NONE:
+                self.emergency_type = EmergencyType.CRITICAL_FUEL
+
+            if self.fuel_level <= 0.0:
+                self.status = FlightStatus.CRASHED
+                self.crash_reason = f"{self.flight_id} exhausted all fuel while waiting to land."
+                self.speed = 0.0
+                return
+
+        self._update_position(dt)
+        self.distance_nm = self._compute_airbase_distance_nm()
+
