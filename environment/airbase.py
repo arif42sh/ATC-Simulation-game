@@ -172,3 +172,42 @@ class Airbase:
             elif shortest_rwy.status == RunwayStatus.UNAVAILABLE and "Weather" in shortest_rwy.status_reason:
                 shortest_rwy.release()
 
+    def authorize_landing(self, flight_id: str, runway_id: str, force_unsafe: bool = False) -> bool:
+        """
+        Clears aircraft to intercept and land on the specified runway.
+        If force_unsafe=True (e.g., manual override test), allows collision detection to catch conflicts.
+        """
+        aircraft = self.get_aircraft(flight_id)
+        runway = self.runways.get(runway_id)
+        if not aircraft or not runway:
+            return False
+
+        if not force_unsafe and not runway.is_available():
+            return False
+
+        aircraft.assign_runway_geometry(
+            runway_id=runway_id,
+            approach_pos=(runway.approach_x, runway.approach_y),
+            start_pos=(runway.start_x, runway.start_y),
+            end_pos=(runway.end_x, runway.end_y),
+            ux=runway.ux,
+            uy=runway.uy,
+            angle_deg=runway.screen_angle_deg,
+        )
+
+        if runway.is_available():
+            runway.reserve(flight_id, duration_seconds=0.0)
+        return True
+
+    def hold_aircraft(self, flight_id: str) -> bool:
+        """Returns aircraft to holding orbit and releases any runway reserved by it."""
+        aircraft = self.get_aircraft(flight_id)
+        if not aircraft:
+            return False
+        if aircraft.assigned_runway and aircraft.assigned_runway in self.runways:
+            rwy = self.runways[aircraft.assigned_runway]
+            if rwy.current_aircraft == flight_id:
+                rwy.release()
+        aircraft.return_to_holding_orbit()
+        return True
+
