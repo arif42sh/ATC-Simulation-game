@@ -405,3 +405,45 @@ class SkyATCGame:
         pygame.quit()
         sys.exit()
 
+    def _trigger_crash_modal(self, crashed_ac: Aircraft):
+        self.sound.play("warning")
+        self.has_active_session = False
+        self.agent.reward_system.evaluate_action("UNSAFE_DECISION", crashed_ac.flight_id, crashed_ac.crash_reason)
+        score = self.agent.reward_system.cumulative_reward
+        self.db_logger.log_level_history(
+            self.level_mgr.current_level, "CRASHED", score,
+            len(self.airbase.flight_history), self.agent.stats["emergencies_handled"],
+        )
+        self.db_logger.log_event(self.level_mgr.current_level, "CRASH", crashed_ac.crash_reason, aircraft_id=crashed_ac.flight_id)
+
+        self.modal_state = {
+            "type": "CRASH",
+            "title": f"LEVEL {self.level_mgr.current_level:02d} FAILED — CRASH ALERT",
+            "subtitle": crashed_ac.crash_reason,
+            "score": score,
+            "landings": len(self.airbase.flight_history),
+            "emergencies": self.agent.stats["emergencies_handled"],
+            "breakdown": self.agent.reward_system.get_breakdown(),
+        }
+        self._rebuild_buttons()
+
+    def _trigger_complete_modal(self):
+        self.sound.play("victory")
+        self.has_active_session = False
+        score = self.agent.reward_system.cumulative_reward
+        landed = len(self.airbase.flight_history)
+        emerg = self.agent.stats["emergencies_handled"]
+        self.db_logger.log_level_history(self.level_mgr.current_level, "COMPLETED", score, landed, emerg)
+        self.db_logger.log_event(self.level_mgr.current_level, "LEVEL_COMPLETE", f"Completed Level {self.level_mgr.current_level} with {score} pts")
+
+        self.modal_state = {
+            "type": "COMPLETE",
+            "title": f"LEVEL {self.level_mgr.current_level:02d} COMPLETE!",
+            "subtitle": f"All {landed} incoming aircraft landed safely ({self.level_mgr.level_cfg['difficulty']}).",
+            "score": score,
+            "landings": landed,
+            "emergencies": emerg,
+            "breakdown": self.agent.reward_system.get_breakdown(),
+        }
+        self._rebuild_buttons()
+
