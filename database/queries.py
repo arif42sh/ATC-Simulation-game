@@ -189,3 +189,39 @@ class DatabaseLogger:
             "hi_score": max(0, int((hi_row or {}).get("best") or 0)),
         }
 
+    def get_level_progression(self) -> Dict[str, Any]:
+        """Returns unlocked levels and per-level best stats from level_history."""
+        rows = self.db.fetchall(
+            """SELECT level_id, completion_status, final_score, total_landings, total_emergencies
+               FROM level_history ORDER BY level_history_id ASC"""
+        )
+        completed_levels = set()
+        best_by_level: Dict[int, Dict[str, Any]] = {}
+
+        for row in rows:
+            lvl = int(row["level_id"])
+            score = int(row["final_score"] or 0)
+            emerg = int(row["total_emergencies"] or 0)
+            if row["completion_status"] == "COMPLETED":
+                completed_levels.add(lvl)
+            prev = best_by_level.get(lvl)
+            if prev is None or score > prev["best_score"]:
+                best_by_level[lvl] = {
+                    "best_score": score,
+                    "emergencies": emerg,
+                    "completed": lvl in completed_levels,
+                }
+            elif lvl in completed_levels:
+                prev["completed"] = True
+
+        max_unlocked = 1
+        for lvl in range(1, 21):
+            if lvl in completed_levels:
+                max_unlocked = min(20, max(max_unlocked, lvl + 1))
+
+        return {
+            "completed_levels": sorted(completed_levels),
+            "max_unlocked": max_unlocked,
+            "best_by_level": best_by_level,
+        }
+
