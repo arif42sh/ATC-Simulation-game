@@ -179,3 +179,80 @@ class Aircraft:
         self._update_position(dt)
         self.distance_nm = self._compute_airbase_distance_nm()
 
+    def _update_position(self, dt: float):
+        """Smooth kinematic movement through Holding -> Intercept -> Approach -> Rollout -> Landed."""
+        if not self.trail or math.hypot(self.x - self.trail[-1][0], self.y - self.trail[-1][1]) > 7.0:
+            self.trail.append((self.x, self.y))
+            if len(self.trail) > 16:
+                self.trail.pop(0)
+
+        if self.status == FlightStatus.HOLDING:
+            # First fly smoothly to orbit radius if newly spawned at perimeter, then circle orbit
+            dx = self.x - self.orbit_x
+            dy = self.y - self.orbit_y
+            dist_from_center = math.hypot(dx, dy)
+
+            if abs(dist_from_center - self.orbit_radius) > 8.0:
+                angle_to_orbit = math.atan2(self.orbit_y - self.y, self.orbit_x - self.x)
+                step = min(dist_from_center, (self.cruise_speed * 0.20) * dt)
+                self.x += math.cos(angle_to_orbit) * step
+                self.y += math.sin(angle_to_orbit) * step
+                self.heading = math.degrees(angle_to_orbit)
+            else:
+                rad = math.atan2(dy, dx) + 0.34 * dt
+                self.x = self.orbit_x + self.orbit_radius * math.cos(rad)
+                self.y = self.orbit_y + self.orbit_radius * math.sin(rad)
+                self.heading = (math.degrees(rad) + 90.0) % 360.0
+            self.altitude_ft = 3800.0
+
+        elif self.status == FlightStatus.INTERCEPT:
+            dx = self.approach_x - self.x
+            dy = self.approach_y - self.y
+            dist = math.hypot(dx, dy)
+            move_step = (self.cruise_speed * 0.36) * dt
+
+            if dist > max(6.0, move_step):
+                self.heading = math.degrees(math.atan2(dy, dx))
+                self.x += (dx / dist) * move_step
+                self.y += (dy / dist) * move_step
+                self.altitude_ft = max(1800.0, self.altitude_ft - 260.0 * dt)
+            else:
+                self.x = self.approach_x
+                self.y = self.approach_y
+                self.heading = self.rwy_angle_deg
+                self.status = FlightStatus.APPROACHING
+
+        elif self.status == FlightStatus.APPROACHING:
+            dx = self.rwy_start_x - self.x
+            dy = self.rwy_start_y - self.y
+            dist = math.hypot(dx, dy)
+            move_step = (self.cruise_speed * 0.30) * dt
+            self.heading = self.rwy_angle_deg
+
+            if dist > max(5.0, move_step):
+                self.x += (dx / dist) * move_step
+                self.y += (dy / dist) * move_step
+                self.altitude_ft = max(0.0, 1800.0 * (dist / 85.0))
+            else:
+                self.x = self.rwy_start_x
+                self.y = self.rwy_start_y
+                self.altitude_ft = 0.0
+                self.status = FlightStatus.ROLLING_LAND
+                self.touchdown_occurred = True
+                self.speed = self.cruise_speed * 0.85
+
+        elif self.status == FlightStatus.ROLLING_LAND:
+            self.heading = self.rwy_angle_deg
+            self.altitude_ft = 0.0
+            step = (self.speed * 0.42) * dt
+            self.x += self.rwy_ux * step
+            self.y += self.rwy_uy * step
+            self.speed = max(48.0, self.speed - 28.0 * dt)
+
+            # Complete landing once 78% down the runway strip
+            proj = (self.x - self.rwy_start_x) * self.rwy_ux + (self.y - self.rwy_start_y) * self.rwy_uy
+            total_px = math.hypot(self.rwy_end_x - self.rwy_start_x, self.rwy_end_y - self.rwy_start_y)
+            if proj >= total_px * 0.78:
+                self.status = FlightStatus.LANDED
+                self.speed = 0.0
+
