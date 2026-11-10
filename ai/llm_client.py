@@ -100,3 +100,42 @@ class LLMClient:
         plan["latency_ms"] = self.last_latency_ms
         return plan
 
+    def request_plan_async(
+        self,
+        state_summary: Dict[str, Any],
+        on_complete: Callable[[int, Dict[str, Any]], None],
+    ) -> int:
+        """
+        Non-blocking event-driven Gemini API request dispatched in a background thread.
+        Returns sequence id; stale responses are ignored by caller if newer event occurred.
+        """
+        with self._seq_lock:
+            self._latest_seq += 1
+            req_seq = self._latest_seq
+
+        if not self.sdk_ready or self.client is None:
+            return req_seq
+
+        def _worker():
+            t0 = time.perf_counter()
+            try:
+                cloud_plan = self._call_gemini_sdk(state_summary)
+                latency = round((time.perf_counter() - t0) * 1000.0, 2)
+                if cloud_plan and isinstance(cloud_plan.get("assignments"), list):
+                    with self._seq_lock:
+                        if req_seq != self._latest_seq:
+                            return
+                    self.last_latency_ms = latency
+                    self.active_mode = f"LLM API ({self.model})"
+                    self.last_error = ""
+                    cloud_plan["source"] = "LLM_API"
+                    cloud_plan["latency_ms"] = latency
+                    on_complete(req_seq, cloud_plan)
+            except Exception as exc:
+                self.last_error = str(exc)
+                self.active_mode = "Local Utility Fallback"
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
+        return req_seq
+
