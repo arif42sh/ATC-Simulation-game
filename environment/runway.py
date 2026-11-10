@@ -55,3 +55,25 @@ class Runway:
         self.closure_timer: float = 0.0
         self.total_operations_handled: int = 0
 
+    def is_available(self) -> bool:
+        """Returns True only if runway is Available and unoccupied."""
+        return self.status == RunwayStatus.AVAILABLE and self.current_aircraft is None
+
+    def supports_aircraft(self, min_runway_length_m: int) -> bool:
+        """Checks whether this runway is long enough for the aircraft size."""
+        return self.length_m >= min_runway_length_m
+
+    def reserve(self, flight_id: str, duration_seconds: float = 0.0) -> bool:
+        """
+        Marks runway Occupied for an incoming landing clearance.
+        When duration_seconds <= 0, stays locked until the aircraft lands/crashes/holds.
+        """
+        if not self.is_available():
+            return False
+        self.status = RunwayStatus.OCCUPIED
+        self.status_reason = f"Landing clearance: {flight_id}"
+        self.current_aircraft = flight_id
+        self.occupancy_timer = max(0.0, float(duration_seconds))
+        self.total_operations_handled += 1
+        return True
+
