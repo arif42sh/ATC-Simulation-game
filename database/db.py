@@ -279,3 +279,47 @@ class DatabaseManager:
             print(f"[DATABASE ERROR] execute failed: {exc}")
             return 0
 
+    def fetchall(self, query: str, params: tuple = ()) -> list:
+        if not self.connection:
+            return []
+        fmt = query.replace("%s", "?") if self.engine_type == "sqlite" else query.replace("?", "%s")
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(fmt, params)
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(r) for r in rows]
+        except Exception as exc:
+            print(f"[DATABASE ERROR] fetchall failed: {exc}")
+            return []
+
+    def fetchone(self, query: str, params: tuple = ()) -> Optional[dict]:
+        if not self.connection:
+            return None
+        fmt = query.replace("%s", "?") if self.engine_type == "sqlite" else query.replace("?", "%s")
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(fmt, params)
+            row = cursor.fetchone()
+            cursor.close()
+            return dict(row) if row is not None else None
+        except Exception as exc:
+            print(f"[DATABASE ERROR] fetchone failed: {exc}")
+            return None
+
+    def close(self):
+        if self.connection:
+            try:
+                self.connection.close()
+            except Exception:
+                pass
+
+
+_db_instance: Optional[DatabaseManager] = None
+
+
+def get_db() -> DatabaseManager:
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = DatabaseManager()
+    return _db_instance
