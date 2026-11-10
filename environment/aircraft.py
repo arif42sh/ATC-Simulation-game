@@ -301,3 +301,23 @@ class Aircraft:
             "is_emergency": self.is_emergency(),
         }
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "flight_id": self.flight_id,
+            "callsign": self.flight_id,
+            "model": self.model,
+            "aircraft_size": self.aircraft_size,
+            "min_runway_length_m": self.min_runway_length_m,
+            "fuel_level": round(self.fuel_level, 1),
+            "emergency_type": self.emergency_type,
+            "distance_nm": self.distance_nm,
+            "waiting_time": round(self.waiting_time, 1),
+            "arrival_seq": self.arrival_seq,
+            "status": self.status,
+            "assigned_runway": self.assigned_runway,
+            "priority_score": self.get_priority_score(),
+            "hitl_remaining": round(self.hitl_decision_timer, 1),
+            "hitl_pending": self.hitl_pending,
+            "altitude_ft": int(self.altitude_ft),
+            "speed_kts": int(self.speed),
+        }
