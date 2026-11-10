@@ -40,3 +40,31 @@ class SoundManager:
         except Exception:
             self.enabled = False
 
+    def _synth_sequence(self, notes: list[tuple[int, float]], volume: float = 0.2) -> pygame.mixer.Sound:
+        sample_rate = 22050
+        segments = []
+        for freq, dur in notes:
+            n_samples = max(1, int(sample_rate * dur))
+            t = np.linspace(0, dur, n_samples, endpoint=False)
+            if freq <= 0:
+                wave = np.zeros(n_samples, dtype=np.float32)
+            else:
+                env = np.minimum(1.0, np.minimum(t * 60.0, (dur - t) * 45.0))
+                wave = np.sin(2.0 * math.pi * freq * t) * env
+            segments.append(wave)
+        full = np.concatenate(segments)
+        pcm = (full * 32767.0 * volume).astype(np.int16)
+        return pygame.sndarray.make_sound(pcm)
+
+    def toggle_mute(self) -> bool:
+        self.muted = not self.muted
+        return self.muted
+
+    def play(self, name: str):
+        if self.enabled and not self.muted:
+            snd = self.sounds.get(name)
+            if snd:
+                try:
+                    snd.play()
+                except Exception:
+                    pass
