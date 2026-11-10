@@ -42,3 +42,42 @@ SIMULATION_SPEED_FAST = 2.0
 # 10-Second Human-in-the-Loop (HITL) Decision Window (Report Section 9)
 HITL_TIMEOUT_SECONDS = float(os.getenv("HITL_TIMEOUT_SECONDS", "10.0"))
 
+# -----------------------------------------------------------------------------
+# Game States (4 Primary Screens)
+# -----------------------------------------------------------------------------
+class GameState:
+    MAIN_MENU = "MAIN_MENU"
+    LEVEL_SELECT = "LEVEL_SELECT"
+    SIMULATION = "SIMULATION"
+    AI_STATS = "AI_STATS"
+
+
+# -----------------------------------------------------------------------------
+# Runway States (Report Section 6.3)
+# -----------------------------------------------------------------------------
+class RunwayStatus:
+    AVAILABLE = "Available"
+    OCCUPIED = "Occupied"
+    UNAVAILABLE = "Unavailable"
+    UNDER_MAINTENANCE = "Under Maintenance"
+
+
+# -----------------------------------------------------------------------------
+# Aircraft Size & Runway Length Requirements (Game Improvement Sec 4)
+# -----------------------------------------------------------------------------
+class AircraftSize:
+    SMALL = "SMALL"
+    MEDIUM = "MEDIUM"
+    HEAVY = "HEAVY"
+
+
+AIRCRAFT_SPECS: Dict[str, Dict[str, Any]] = {
+    "AT72": {"size": AircraftSize.SMALL, "min_runway_m": 1500, "speed_kts": 125.0},
+    "C208": {"size": AircraftSize.SMALL, "min_runway_m": 1400, "speed_kts": 115.0},
+    "B737": {"size": AircraftSize.MEDIUM, "min_runway_m": 2200, "speed_kts": 140.0},
+    "A320": {"size": AircraftSize.MEDIUM, "min_runway_m": 2200, "speed_kts": 140.0},
+    "B777": {"size": AircraftSize.HEAVY, "min_runway_m": 2800, "speed_kts": 155.0},
+    "A350": {"size": AircraftSize.HEAVY, "min_runway_m": 2800, "speed_kts": 155.0},
+    "C17":  {"size": AircraftSize.HEAVY, "min_runway_m": 2800, "speed_kts": 150.0},
+}
+
