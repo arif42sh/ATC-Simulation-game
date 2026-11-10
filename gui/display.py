@@ -688,3 +688,112 @@ class DisplayRenderer:
         self.screen.blit(self.font_small.render(banner["title"], True, border), (bx + 14, by + 5))
         self.screen.blit(self.font_tiny.render(banner["message"], True, config.COLOR_WHITE), (bx + 14, by + 23))
 
+    def _render_gameplay_sidebar(
+        self,
+        airbase: Airbase,
+        agent: ATCAgent,
+        level_mgr: LevelManager,
+        selected_ac: Optional[Aircraft],
+        override_mode: bool,
+    ):
+        sx = config.SIDEBAR_X
+        sy = config.TOP_BAR_HEIGHT
+        sw = config.SIDEBAR_WIDTH
+        sh = config.WINDOW_HEIGHT - sy
+
+        pygame.draw.rect(self.screen, config.COLOR_SIDEBAR_BG, (sx, sy, sw, sh))
+        pygame.draw.line(self.screen, config.COLOR_CARD_BORDER, (sx, sy), (sx, config.WINDOW_HEIGHT), 2)
+
+        # Header: SKYATC AI + Active Mode Badge
+        t1 = self.font_title.render("SKYATC ", True, config.COLOR_WHITE)
+        t2 = self.font_title.render("AI", True, config.COLOR_CYAN)
+        self.screen.blit(t1, (sx + 20, sy + 8))
+        self.screen.blit(t2, (sx + 20 + t1.get_width(), sy + 8))
+
+        mode_str = f"Mode: {agent.ui_state.get('mode_label', 'Local Utility Fallback')}"
+        is_api = "LLM API" in mode_str
+        m_col = config.COLOR_PRIMARY_GREEN if is_api else config.COLOR_CYAN
+        self.screen.blit(self.font_tiny.render(mode_str, True, m_col), (sx + 22, sy + 48))
+
+        prog_str = f"Progress: {len(airbase.flight_history)}/{level_mgr.target_aircraft} Landed"
+        self.screen.blit(self.font_tiny.render(prog_str, True, config.COLOR_TEXT_MUTED), (sx + 225, sy + 48))
+
+        # 1. INCOMING PRIORITY QUEUE
+        self.screen.blit(self.font_header.render("INCOMING PRIORITY QUEUE", True, config.COLOR_WHITE), (sx + 20, sy + 68))
+        queue_box = pygame.Rect(sx + 16, sy + 90, sw - 32, 232)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, queue_box, border_radius=8)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, queue_box, 1, border_radius=8)
+
+        pending_ranked = airbase.get_ranked_pending_aircraft()
+        if not pending_ranked:
+            self.screen.blit(self.font_body.render("Queue clear — monitoring sector...", True, config.COLOR_TEXT_DIM), (queue_box.x + 14, queue_box.y + 18))
+        else:
+            cy = queue_box.y + 8
+            for ac in pending_ranked[:4]:
+                bd = ac.get_priority_breakdown()
+                is_em = ac.is_emergency()
+                if is_em:
+                    c_bg, c_border = (145, 34, 42), (245, 76, 82)
+                elif ac.fuel_level < 42.0:
+                    c_bg, c_border = (158, 96, 18), (240, 165, 45)
+                else:
+                    c_bg, c_border = (62, 86, 112), (96, 128, 162)
+
+                card_rect = pygame.Rect(queue_box.x + 8, cy, queue_box.w - 16, 48)
+                pygame.draw.rect(self.screen, c_bg, card_rect, border_radius=6)
+                is_sel = selected_ac is ac
+                pygame.draw.rect(self.screen, config.COLOR_WHITE if is_sel else c_border, card_rect, 2 if is_sel else 1, border_radius=6)
+
+                line1 = f"{ac.flight_id} | {int(ac.fuel_level)}% | {ac.model} ({ac.aircraft_size[0]})"
+                self.screen.blit(self.font_body_bold.render(line1, True, config.COLOR_WHITE), (card_rect.x + 10, card_rect.y + 5))
+                line2 = f"{bd['status_tag']}  •  Dist: {ac.distance_nm} NM"
+                self.screen.blit(self.font_tiny.render(line2, True, (240, 240, 240)), (card_rect.x + 10, card_rect.y + 25))
+                cy += 54
+
+        # 2. AI RECOMMENDED PLAN + 1-line Explainable AI Reason Badge
+        plan_box = pygame.Rect(sx + 16, sy + 334, sw - 32, 114)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, plan_box, border_radius=8)
+        pygame.draw.rect(self.screen, config.COLOR_CYAN, plan_box, 1, border_radius=8)
+        self.screen.blit(self.font_header.render("AI RECOMMENDED PLAN", True, config.COLOR_WHITE), (plan_box.x + 14, plan_box.y + 8))
+
+        plan_lines = agent.ui_state.get("plan_lines", [])
+        py = plan_box.y + 30
+        if not plan_lines:
+            self.screen.blit(self.font_body.render("Awaiting next arrival request...", True, config.COLOR_TEXT_DIM), (plan_box.x + 14, py))
+        else:
+            for idx, line in enumerate(plan_lines[:2]):
+                col = config.COLOR_CYAN if idx == 0 else config.COLOR_PRIMARY_GREEN
+                self.screen.blit(self.font_body_bold.render(line, True, col), (plan_box.x + 14, py))
+                py += 21
+
+        # Explainable AI Reason Badge
+        reason_txt = agent.ui_state.get("reason_badge", "")
+        badge_rect = pygame.Rect(plan_box.x + 10, plan_box.bottom - 30, plan_box.w - 20, 22)
+        pygame.draw.rect(self.screen, (26, 46, 72), badge_rect, border_radius=4)
+        short_reason = (reason_txt[:46] + "...") if len(reason_txt) > 49 else reason_txt
+        self.screen.blit(self.font_tiny.render(f"Reason: {short_reason}", True, (245, 225, 130)), (badge_rect.x + 8, badge_rect.y + 4))
+
+        # 3. 10s DECISION TIMER
+        timer_box = pygame.Rect(sx + 16, sy + 458, sw - 32, 62)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, timer_box, border_radius=8)
+        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, timer_box, 1, border_radius=8)
+
+        top_pending = pending_ranked[0] if pending_ranked else None
+        t_rem = top_pending.hitl_decision_timer if top_pending else config.HITL_TIMEOUT_SECONDS
+        t_max = top_pending.hitl_initial_timer if top_pending else config.HITL_TIMEOUT_SECONDS
+        pct = max(0.0, min(1.0, t_rem / max(0.1, t_max)))
+
+        self.screen.blit(self.font_header.render("10s DECISION TIMER", True, config.COLOR_WHITE), (timer_box.x + 95, timer_box.y + 7))
+        bar_rect = pygame.Rect(timer_box.x + 14, timer_box.y + 32, timer_box.w - 72, 20)
+        pygame.draw.rect(self.screen, (34, 48, 68), bar_rect, border_radius=5)
+        bar_col = config.COLOR_PRIMARY_GREEN if pct > 0.5 else (config.COLOR_WARN_AMBER if pct > 0.25 else config.COLOR_CRITICAL_RED)
+        pygame.draw.rect(self.screen, bar_col, (bar_rect.x, bar_rect.y, int(bar_rect.w * pct), bar_rect.h), border_radius=5)
+        self.screen.blit(self.font_mono_sm.render(f"{int(math.ceil(t_rem)):02d}s", True, config.COLOR_WHITE), (bar_rect.x + 8, bar_rect.y + 3))
+        self.screen.blit(self.font_mono_sm.render(f"{int(pct * 100)}%", True, config.COLOR_WHITE), (bar_rect.right + 10, bar_rect.y + 3))
+
+        # Quick Manual Override hint at bottom of sidebar
+        target_fid = selected_ac.flight_id if selected_ac else (top_pending.flight_id if top_pending else "None")
+        ov_title = f"OVERRIDE ({target_fid}) — Drag plane or pick runway:" if override_mode else f"QUICK ASSIGN ({target_fid}) / Drag-and-Draw:"
+        ov_col = config.COLOR_WARN_AMBER if override_mode else config.COLOR_TEXT_MUTED
+        self.screen.blit(self.font_tiny.render(ov_title, True, ov_col), (sx + 18, sy + 596))
+
