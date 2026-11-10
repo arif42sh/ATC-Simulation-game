@@ -92,3 +92,37 @@ class GoalBasedPlanner:
 
         return sanitized
 
+    def poll_async_upgrade(self, current_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Checks if a background Gemini 2.5 Flash response arrived; validates all 9 rules
+        before replacing the active recommendation.
+        """
+        with self._async_lock:
+            cloud_plan = self._pending_async_plan
+            self._pending_async_plan = None
+
+        if not cloud_plan:
+            return None
+
+        is_valid, issues, valid_actions, val_code = self.validator.validate_plan(cloud_plan, current_state)
+        if is_valid and valid_actions:
+            self.plan_version += 1
+            upgraded = {
+                "version": self.plan_version,
+                "reasoning": cloud_plan.get("reasoning", "Gemini 2.5 Flash optimal plan."),
+                "source": "LLM_API",
+                "is_valid": True,
+                "validation_code": val_code,
+                "issues": [],
+                "assignments": valid_actions,
+                "latency_ms": cloud_plan.get("latency_ms", self.llm_client.last_latency_ms),
+            }
+            self.current_plan = upgraded
+            return upgraded
+
+        # Return validation rejection info so agent can log rejection metrics
+        return {
+            "rejected_cloud_plan": True,
+            "validation_code": val_code,
+            "issues": issues,
+        }
