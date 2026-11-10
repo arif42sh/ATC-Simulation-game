@@ -225,3 +225,93 @@ class DatabaseLogger:
             "best_by_level": best_by_level,
         }
 
+    def get_stats_dashboard_data(self) -> Dict[str, Any]:
+        """Aggregates all metrics for the AI & DB STATS screen."""
+        total_req_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM missions_requests")
+        landed_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE aircraft_status = 'LANDED'")
+        emerg_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE emergency_status = 1 AND aircraft_status = 'LANDED'")
+        reward_row = self.db.fetchone("SELECT SUM(reward_points) as pts FROM reward_history")
+
+        total_dec_row = self.db.fetchone("SELECT COUNT(*) as cnt, AVG(decision_time_ms) as avg_ms FROM agent_decisions")
+        val_rej_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM agent_decisions WHERE validation_status != 'VALID'")
+        valid_ai_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM agent_decisions WHERE validation_status = 'VALID'")
+
+        p_accept_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'ACCEPT_AI'")
+        p_override_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'OVERRIDE'")
+        p_timeout_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'TIMEOUT_AUTO_EXECUTE'")
+
+        total_missions = int((total_req_row or {}).get("cnt") or 0)
+        successful_landings = int((landed_row or {}).get("cnt") or 0)
+        emergencies_handled = int((emerg_row or {}).get("cnt") or 0)
+        accumulated_rewards = int((reward_row or {}).get("pts") or 0)
+
+        total_decisions = int((total_dec_row or {}).get("cnt") or 0)
+        avg_ms = float((total_dec_row or {}).get("avg_ms") or 0.0)
+        val_rejections = int((val_rej_row or {}).get("cnt") or 0)
+        valid_ai = int((valid_ai_row or {}).get("cnt") or 0)
+
+        accepts = int((p_accept_row or {}).get("cnt") or 0)
+        overrides = int((p_override_row or {}).get("cnt") or 0)
+        timeouts = int((p_timeout_row or {}).get("cnt") or 0)
+
+        landing_rate = round((successful_landings / total_missions) * 100.0, 1) if total_missions else 0.0
+        ai_accuracy = round((valid_ai / total_decisions) * 100.0, 1) if total_decisions else 100.0
+        player_total = accepts + overrides
+        player_accuracy = round((accepts / player_total) * 100.0, 1) if player_total else 100.0
+        rej_rate = round((val_rejections / total_decisions) * 100.0, 1) if total_decisions else 0.0
+
+        # Recent detailed database logs (MySQL 8 ONLY_FULL_GROUP_BY & SQLite compatible)
+        logs_rows = self.db.fetchall(
+            """SELECT ad.decision_id, ad.request_id, ad.flight_id,
+                      COALESCE(ac.emergency_type, 'NONE') as emerg_type,
+                      ad.assigned_runway_id, ad.validation_status,
+                      COALESCE((SELECT pd.decision_type FROM player_decisions pd
+                                WHERE pd.decision_id = ad.decision_id
+                                ORDER BY pd.player_decision_id DESC LIMIT 1), 'AUTO') as player_action,
+                      COALESCE((SELECT SUM(rh.reward_points) FROM reward_history rh
+                                WHERE rh.aircraft_id = ad.flight_id), 0) as flight_score
+               FROM agent_decisions ad
+               LEFT JOIN missions_requests mr ON ad.request_id = mr.request_id
+               LEFT JOIN aircraft ac ON mr.aircraft_id = ac.aircraft_id
+               ORDER BY ad.decision_id DESC
+               LIMIT 40"""
+        )
+
+        recent_logs: List[Dict[str, Any]] = []
+        for r in logs_rows:
+            emerg = r.get("emerg_type", "NONE")
+            ev_label = "Emergency Landing" if emerg == "CRITICAL_FUEL" else (emerg.replace("_", " ").title() if emerg != "NONE" else "Normal Landing")
+            p_act = r.get("player_action", "AUTO")
+            res_label = "Override" if p_act == "OVERRIDE" else ("Auto-Exec" if p_act == "TIMEOUT_AUTO_EXECUTE" else "Success")
+            if r.get("validation_status") != "VALID":
+                res_label = "Rejected"
+            recent_logs.append({
+                "req_id": f"{int(r.get('request_id') or r.get('decision_id') or 0):04d}",
+                "flight_id": r.get("flight_id", "N/A"),
+                "event_type": ev_label[:20],
+                "ai_suggestion": r.get("assigned_runway_id") or "HOLD",
+                "result": res_label,
+                "score": int(r.get("flight_score") or 0),
+            })
+
+        prog = self.get_level_progression()
+        highest_lvl = max(prog["completed_levels"]) if prog["completed_levels"] else 0
+
+        return {
+            "total_missions": total_missions,
+            "emergencies_handled": emergencies_handled,
+            "successful_landings": successful_landings,
+            "landing_rate": landing_rate,
+            "accumulated_rewards": accumulated_rewards,
+            "ai_accuracy": ai_accuracy,
+            "player_accuracy": player_accuracy,
+            "avg_ai_decision_sec": round(avg_ms / 1000.0, 2) if avg_ms > 0 else 0.15,
+            "avg_ai_decision_ms": round(avg_ms, 1) if avg_ms > 0 else 1.2,
+            "validation_rejections": val_rejections,
+            "validation_rejection_rate": rej_rate,
+            "timeout_auto_executes": timeouts,
+            "recent_logs": recent_logs,
+            "levels_completed": len(prog["completed_levels"]),
+            "highest_completed_level": highest_lvl,
+        }
+
