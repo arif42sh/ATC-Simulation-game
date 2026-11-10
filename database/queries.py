@@ -43,3 +43,37 @@ class DatabaseLogger:
                     (r_id, rwy.name, level_id, rwy.length_m, rwy.status, rwy.current_aircraft),
                 )
 
+    def log_aircraft_and_request(self, ac_dict: Dict[str, Any]) -> tuple[int, int]:
+        """Inserts into aircraft & missions_requests; returns (aircraft_id, request_id)."""
+        emerg_flag = 1 if ac_dict.get("emergency_type", "NONE") != "NONE" else 0
+        ac_id = self.db.execute(
+            """INSERT INTO aircraft
+               (flight_id, model, aircraft_size, initial_fuel, current_fuel, emergency_status, emergency_type, current_distance, aircraft_status)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                ac_dict["flight_id"],
+                ac_dict.get("model", "B737"),
+                ac_dict.get("aircraft_size", "MEDIUM"),
+                ac_dict.get("fuel_level", 75.0),
+                ac_dict.get("fuel_level", 75.0),
+                emerg_flag,
+                ac_dict.get("emergency_type", "NONE"),
+                ac_dict.get("distance_nm", 10.0),
+                ac_dict.get("status", "HOLDING"),
+            ),
+        )
+        req_id = self.db.execute(
+            """INSERT INTO missions_requests
+               (aircraft_id, flight_id, request_type, waiting_time, current_priority, request_status)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (
+                ac_id,
+                ac_dict["flight_id"],
+                "LANDING",
+                ac_dict.get("waiting_time", 0.0),
+                ac_dict.get("priority_score", 0.0),
+                "PENDING",
+            ),
+        )
+        return ac_id, req_id
+
