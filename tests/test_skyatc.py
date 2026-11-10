@@ -139,3 +139,43 @@ class TestSkyATCV2(unittest.TestCase):
         self.assertNotIn("RWY 2", assigned_rwys)
         self.assertEqual(assignments[0]["flight_id"], "BG-402")
 
+    def test_tc09_tc10_validator_rejects_conflicts_duplicates_and_short_runways(self):
+        """TC-09 & TC-10: Validator catches double runway conflict, duplicate aircraft, and Heavy on short runway."""
+        self.airbase.setup_for_level(16)  # 4 runways, RWY 4 = 1800m
+        self.airbase.add_aircraft(Aircraft("BG-777", model="B777", fuel_level=50.0))
+        self.airbase.add_aircraft(Aircraft("BG-101", model="AT72", fuel_level=60.0))
+        state = self.agent.observer.observe()
+        validator = PlanValidator()
+
+        # Duplicate runway conflict
+        bad_conflict = {
+            "assignments": [
+                {"flight_id": "BG-777", "action": "AUTHORIZE_LANDING", "assigned_runway": "RWY 1"},
+                {"flight_id": "BG-101", "action": "AUTHORIZE_LANDING", "assigned_runway": "RWY 1"},
+            ]
+        }
+        ok, issues, _, code = validator.validate_plan(bad_conflict, state)
+        self.assertFalse(ok)
+        self.assertEqual(code, "RUNWAY_CONFLICT")
+
+        # Heavy B777 on 1800m short RWY 4
+        bad_size = {
+            "assignments": [
+                {"flight_id": "BG-777", "action": "AUTHORIZE_LANDING", "assigned_runway": "RWY 4"},
+            ]
+        }
+        ok2, _, _, code2 = validator.validate_plan(bad_size, state)
+        self.assertFalse(ok2)
+        self.assertEqual(code2, "CONSTRAINT_VIOLATION")
+
+        # Duplicate aircraft assignment
+        bad_dup = {
+            "assignments": [
+                {"flight_id": "BG-101", "action": "AUTHORIZE_LANDING", "assigned_runway": "RWY 3"},
+                {"flight_id": "BG-101", "action": "AUTHORIZE_LANDING", "assigned_runway": "RWY 4"},
+            ]
+        }
+        ok3, _, _, code3 = validator.validate_plan(bad_dup, state)
+        self.assertFalse(ok3)
+        self.assertEqual(code3, "DUPLICATE_ASSIGNMENT")
+
