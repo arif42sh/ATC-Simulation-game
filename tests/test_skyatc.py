@@ -202,3 +202,50 @@ class TestSkyATCV2(unittest.TestCase):
         self.assertEqual(self.agent.stats["timeout_auto_executes"], 1)
         self.assertGreater(self.agent.reward_system.cumulative_reward, 0)
 
+    def test_tc13_llm_offline_fallback_and_explainable_reason(self):
+        """TC-13: Offline/API failure seamlessly uses Min-Heap fallback with reason badge."""
+        self.airbase.add_aircraft(Aircraft("BG-101", model="B737", fuel_level=12.0, emergency_type=EmergencyType.CRITICAL_FUEL))
+        plan = self.agent.llm_client.generate_plan_sync(self.agent.observer.observe())
+        self.assertEqual(plan["source"], "LOCAL_UTILITY")
+        self.assertTrue(len(plan["reasoning"]) > 5)
+        self.assertEqual(plan["assignments"][0]["flight_id"], "BG-101")
+
+    def test_tc14_tc15_20_level_runway_scaling_and_db_csv_export(self):
+        """TC-14 & TC-15: 20-level runway progression (2->2->3->4), DB persistence & CSV export."""
+        self.airbase.setup_for_level(1)
+        self.assertEqual(len(self.airbase.runways), 2)
+        self.airbase.setup_for_level(6)
+        self.assertEqual(len(self.airbase.runways), 2)
+        self.airbase.setup_for_level(11)
+        self.assertEqual(len(self.airbase.runways), 3)
+        self.airbase.setup_for_level(16)
+        self.assertEqual(len(self.airbase.runways), 4)
+
+        self.db_logger.log_level_history(1, "COMPLETED", 145, 4, 1)
+        prog = self.db_logger.get_level_progression()
+        self.assertIn(1, prog["completed_levels"])
+
+        csv_path = self.db_logger.export_logs_to_csv()
+        self.assertTrue(csv_path.exists())
+        csv_path.unlink(missing_ok=True)
+
+    def test_all_v2_scenarios_and_fuel_crash_detection(self):
+        """Verifies all V2 scenarios execute cleanly and fuel 0% triggers crash diagnostics."""
+        for key in (
+            "normal_landing", "simultaneous_requests", "critical_fuel_emergency",
+            "engine_problem_emergency", "one_runway_occupied", "runway_maintenance_storm",
+            "heavy_aircraft_runway_length", "expert_4_runways",
+        ):
+            self.assertTrue(self.event_mgr.load_scenario(key))
+            self.agent.reset_for_level(self.airbase.level_id)
+            self.agent.step(0.5)
+            self.assertIsNotNone(self.agent.ui_state["current_plan"])
+
+        # Fuel crash detection check
+        starved = Aircraft("BG-000", fuel_level=1.0)
+        self.airbase.setup_for_level(1)
+        self.airbase.add_aircraft(starved)
+        crashed = self.airbase.update(6.5)
+        self.assertIs(crashed, starved)
+        self.assertEqual(starved.status, FlightStatus.CRASHED)
+
