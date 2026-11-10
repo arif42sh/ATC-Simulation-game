@@ -260,3 +260,22 @@ class DatabaseManager:
         except Exception as err:
             print(f"[DATABASE ERROR] Schema init failed: {err}")
 
+    def is_mysql(self) -> bool:
+        return self.engine_type == "mysql"
+
+    def execute(self, query: str, params: tuple = ()) -> int:
+        if not self.connection:
+            return 0
+        fmt = query.replace("%s", "?") if self.engine_type == "sqlite" else query.replace("?", "%s")
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(fmt, params)
+            if self.engine_type == "sqlite":
+                self.connection.commit()
+            last_id = int(getattr(cursor, "lastrowid", 0) or 0)
+            cursor.close()
+            return last_id
+        except Exception as exc:
+            print(f"[DATABASE ERROR] execute failed: {exc}")
+            return 0
+
