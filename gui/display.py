@@ -134,3 +134,40 @@ class DisplayRenderer:
     # SHARED TOP STATUS & AIRBASE CANVAS HELPERS
     # =========================================================================
 
+    def _draw_top_hud_bar(
+        self,
+        landed_count: int,
+        score_label: str,
+        score_val: int,
+        mysql_ok: bool,
+        ai_ready: bool,
+        extra_text: str = "",
+        show_status_box: bool = True,
+    ):
+        pygame.draw.rect(self.screen, config.COLOR_TOPBAR_BG, (0, 0, config.WINDOW_WIDTH, config.TOP_BAR_HEIGHT))
+        pygame.draw.line(self.screen, config.COLOR_TOPBAR_BORDER, (0, config.TOP_BAR_HEIGHT), (config.WINDOW_WIDTH, config.TOP_BAR_HEIGHT), 2)
+
+        l_surf = self.font_mono.render(f"AIRCRAFT LANDED: {landed_count:05d}", True, (228, 240, 212))
+        self.screen.blit(l_surf, (22, 16))
+
+        s_col = config.COLOR_WHITE if score_val >= 0 else config.COLOR_CRITICAL_RED
+        s_surf = self.font_mono.render(f"{score_label}: {score_val:05d}", True, s_col)
+        self.screen.blit(s_surf, (268, 16))
+
+        if extra_text:
+            e_surf = self.font_mono_sm.render(extra_text, True, config.COLOR_CYAN)
+            self.screen.blit(e_surf, (430, 18))
+
+        if show_status_box:
+            box = pygame.Rect(config.WINDOW_WIDTH - 235, 10, 215, 62)
+            pygame.draw.rect(self.screen, (20, 34, 52), box, border_radius=8)
+            pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 1, border_radius=8)
+
+            db_txt = "MYSQL CONNECTED" if mysql_ok else "SQLITE FALLBACK"
+            db_col = config.COLOR_PRIMARY_GREEN if mysql_ok else config.COLOR_WARN_AMBER
+            self.screen.blit(self.font_tiny.render(db_txt, True, db_col), (box.x + 14, box.y + 11))
+
+            ai_txt = "AI AGENT READY" if ai_ready else "UTILITY AGENT READY"
+            ai_col = config.COLOR_PRIMARY_GREEN if ai_ready else config.COLOR_CYAN
+            self.screen.blit(self.font_tiny.render(ai_txt, True, ai_col), (box.x + 14, box.y + 34))
+
