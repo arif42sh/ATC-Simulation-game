@@ -212,3 +212,30 @@ class ATCAgent:
             return True
         return False
 
+    def accept_ai_plan(self) -> bool:
+        """Player clicks [ACCEPT AI PLAN] within 10s window."""
+        current_state = self.observer.observe()
+        plan = self.planner.current_plan or self.planner.generate_plan(current_state, trigger_async_llm=False)
+        is_valid, issues, valid_actions, val_code = self.validator.validate_plan(plan, current_state)
+
+        if not is_valid:
+            plan = self.planner.generate_plan(current_state, trigger_async_llm=False)
+            valid_actions = plan.get("assignments", [])
+
+        executed_any = False
+        for item in valid_actions:
+            if item.get("action") != "AUTHORIZE_LANDING" or not item.get("assigned_runway"):
+                continue
+            fid = item["flight_id"]
+            rwy_id = item["assigned_runway"]
+            ac = self.airbase.get_aircraft(fid)
+            if ac and self.airbase.authorize_landing(fid, rwy_id):
+                ac.decision_maker = "AI_ACCEPTED"
+                self.stats["ai_accepts"] += 1
+                self._record_landing_rewards(ac, rwy_id, decision_type="ACCEPT_AI", is_override=False)
+                executed_any = True
+
+        if executed_any:
+            self._refresh_plan_after_action()
+        return executed_any
+
