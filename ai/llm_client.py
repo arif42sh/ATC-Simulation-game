@@ -139,3 +139,48 @@ class LLMClient:
         thread.start()
         return req_seq
 
+    def _call_gemini_sdk(self, state_summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Calls Gemini 2.5 Flash with enforced structured JSON output."""
+        if not self.client or types is None:
+            return None
+
+        compact_state = {
+            "level_id": state_summary.get("level_id"),
+            "weather": state_summary.get("weather"),
+            "runways": {
+                r_id: {
+                    "length_m": r["length_m"],
+                    "status": r["status"],
+                    "heading": r.get("heading"),
+                }
+                for r_id, r in state_summary.get("runways", {}).items()
+            },
+            "holding_aircraft": [
+                {
+                    "flight_id": ac["flight_id"],
+                    "model": ac["model"],
+                    "size": ac["aircraft_size"],
+                    "min_runway_length_m": ac["min_runway_length_m"],
+                    "fuel_level": ac["fuel_level"],
+                    "emergency_type": ac["emergency_type"],
+                    "distance_nm": ac["distance_nm"],
+                    "waiting_time": ac["waiting_time"],
+                }
+                for ac in state_summary.get("aircraft", [])
+                if ac.get("status") == "HOLDING"
+            ],
+        }
+
+        prompt = f"{SYSTEM_ATC_PROMPT}\n\nSimulation State:\n{json.dumps(compact_state)}"
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+            ),
+        )
+        raw_text = (response.text or "").strip()
+        if not raw_text:
+            return None
+        return json.loads(raw_text)
