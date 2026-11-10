@@ -59,3 +59,36 @@ class GoalBasedPlanner:
 
         return False
 
+    def generate_plan(self, airbase_state: Dict[str, Any], trigger_async_llm: bool = True) -> Dict[str, Any]:
+        """
+        Immediately produces a validated deterministic Min-Heap plan so UI & HITL
+        never stall, and optionally dispatches an event-driven Gemini 2.5 Flash request.
+        """
+        raw_plan = self.decision_engine.generate_deterministic_plan(airbase_state)
+        is_valid, issues, valid_actions, val_code = self.validator.validate_plan(raw_plan, airbase_state)
+
+        self.plan_version += 1
+        sanitized = {
+            "version": self.plan_version,
+            "reasoning": raw_plan.get("reasoning", "Utility plan ready."),
+            "source": "LOCAL_UTILITY",
+            "is_valid": is_valid,
+            "validation_code": val_code,
+            "issues": issues,
+            "assignments": valid_actions,
+            "latency_ms": self.llm_client.last_latency_ms or 1.2,
+        }
+        self.current_plan = sanitized
+
+        if trigger_async_llm and self.llm_client.is_api_configured():
+            pending_count = airbase_state.get("situational_metrics", {}).get("pending_count", 0)
+            if pending_count > 0:
+                def _on_llm_ready(seq: int, cloud_plan: Dict[str, Any]):
+                    with self._async_lock:
+                        if seq >= self._last_async_seq:
+                            self._pending_async_plan = cloud_plan
+
+                self._last_async_seq = self.llm_client.request_plan_async(airbase_state, _on_llm_ready)
+
+        return sanitized
+
