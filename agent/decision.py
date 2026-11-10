@@ -189,3 +189,36 @@ class DecisionEngine:
         }
 
     @staticmethod
+    def _build_explainable_reason(
+        ac: Dict[str, Any],
+        runway: Dict[str, Any],
+        busy_reasons: List[str],
+        utility_score: float,
+    ) -> str:
+        """Produces a crisp, human-readable 1-line Explainable AI reason badge."""
+        del utility_score
+        parts: List[str] = []
+        emerg = ac.get("emergency_type", "NONE")
+        fuel = int(ac.get("fuel_level", 100))
+        wait_s = int(ac.get("waiting_time", 0))
+        is_heavy = ac.get("aircraft_size") == "HEAVY"
+
+        if emerg == "CRITICAL_FUEL" or fuel <= config.FUEL_CRITICAL_THRESHOLD:
+            parts.append(f"CRITICAL FUEL ({fuel}%) -> {runway['id']}")
+        elif emerg != "NONE":
+            parts.append(f"{emerg.replace('_', ' ').title()}! Urgent {runway['id']}")
+        elif fuel < 45:
+            parts.append(f"Lowest fuel ({fuel}%) -> {runway['id']}")
+        elif is_heavy:
+            parts.append(f"Heavy {ac.get('model', 'jet')} needs {runway['length_m']}m {runway['id']}")
+        elif wait_s >= 8:
+            parts.append(f"Waiting {wait_s}s -> free {runway['id']}")
+        else:
+            parts.append(f"Nearest free {runway['id']} ({runway['length_m']}m)")
+
+        if is_heavy and (emerg != "NONE" or fuel < 45):
+            parts.append(f"Heavy {runway['length_m']}m fit")
+        elif busy_reasons:
+            parts.append(busy_reasons[0])
+
+        return "; ".join(parts[:2])
