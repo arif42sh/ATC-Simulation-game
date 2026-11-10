@@ -109,3 +109,39 @@ class Runway:
         self.occupancy_timer = 0.0
         self.closure_timer = 0.0
 
+    def update(self, dt: float):
+        """Advances occupancy and temporary maintenance/unavailability timers."""
+        if self.status == RunwayStatus.OCCUPIED and self.occupancy_timer > 0.0:
+            self.occupancy_timer -= dt
+            if self.occupancy_timer <= 0.0:
+                self.release()
+        elif self.status in (RunwayStatus.UNAVAILABLE, RunwayStatus.UNDER_MAINTENANCE) and self.closure_timer > 0.0:
+            self.closure_timer -= dt
+            if self.closure_timer <= 0.0:
+                self.release()
+
+    def distance_to_point(self, px: float, py: float) -> float:
+        """Shortest distance from screen point (px, py) to runway centerline segment."""
+        vx = self.end_x - self.start_x
+        vy = self.end_y - self.start_y
+        len_sq = vx * vx + vy * vy
+        if len_sq == 0:
+            return math.hypot(px - self.start_x, py - self.start_y)
+        t = max(0.0, min(1.0, ((px - self.start_x) * vx + (py - self.start_y) * vy) / len_sq))
+        proj_x = self.start_x + t * vx
+        proj_y = self.start_y + t * vy
+        return math.hypot(px - proj_x, py - proj_y)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "length_m": self.length_m,
+            "heading": self.heading,
+            "status": self.status,
+            "status_reason": self.status_reason,
+            "current_aircraft": self.current_aircraft,
+            "occupancy_timer": round(self.occupancy_timer, 1),
+            "closure_timer": round(self.closure_timer, 1),
+            "operations_count": self.total_operations_handled,
+        }
