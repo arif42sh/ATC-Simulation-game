@@ -447,3 +447,27 @@ class SkyATCGame:
         }
         self._rebuild_buttons()
 
+    def _render_current_screen(self):
+        mysql_ok = self.db_logger.is_mysql_connected()
+        ai_ready = self.agent.llm_client.is_api_configured()
+
+        if self.current_state == GameState.MAIN_MENU:
+            self.renderer.render_main_menu(self.airbase, self._cached_global, mysql_ok, ai_ready)
+        elif self.current_state == GameState.LEVEL_SELECT:
+            self.renderer.render_level_select(
+                self.airbase, self._cached_global, self._cached_prog,
+                self.selected_level, self.demo_unlock_all, mysql_ok, ai_ready,
+            )
+        elif self.current_state == GameState.SIMULATION:
+            self.renderer.render_simulation(
+                self.airbase, self.agent, self.level_mgr,
+                self.selected_aircraft, self.override_mode, self.drag_state,
+                self.is_paused, self.sim_speed, self.modal_state, self.sound.muted,
+            )
+        elif self.current_state == GameState.AI_STATS:
+            self.renderer.render_ai_stats(
+                self.airbase, self._cached_global,
+                self._cached_stats or self.db_logger.get_stats_dashboard_data(),
+                self.log_scroll, self.export_toast, mysql_ok, ai_ready,
+            )
+
