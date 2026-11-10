@@ -70,3 +70,33 @@ class LLMClient:
         self._seq_lock = threading.Lock()
         self._latest_seq = 0
 
+    def is_api_configured(self) -> bool:
+        return self.sdk_ready
+
+    def generate_plan_sync(self, state_summary: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generates a plan synchronously (tries Gemini API if configured, else
+        uses Deterministic Min-Heap Utility Engine).
+        """
+        t0 = time.perf_counter()
+        if self.sdk_ready and self.client is not None:
+            try:
+                cloud_plan = self._call_gemini_sdk(state_summary)
+                if cloud_plan and isinstance(cloud_plan.get("assignments"), list):
+                    self.last_latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+                    self.active_mode = f"LLM API ({self.model})"
+                    self.last_error = ""
+                    cloud_plan["source"] = "LLM_API"
+                    cloud_plan["latency_ms"] = self.last_latency_ms
+                    return cloud_plan
+            except Exception as exc:
+                self.last_error = str(exc)
+                print(f"[AI WARNING] Gemini API failed ({exc}); using Local Utility Fallback.")
+
+        plan = self.decision_engine.generate_deterministic_plan(state_summary)
+        self.last_latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        self.active_mode = "Local Utility Fallback"
+        plan["source"] = "LOCAL_UTILITY"
+        plan["latency_ms"] = self.last_latency_ms
+        return plan
+
