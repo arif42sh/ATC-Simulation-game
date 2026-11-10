@@ -634,3 +634,45 @@ class DisplayRenderer:
         elif is_paused:
             self._render_pause_overlay()
 
+    def _draw_gameplay_aircraft(self, ac: Aircraft, is_selected: bool):
+        ax, ay = int(ac.x), int(ac.y)
+        is_em = ac.is_emergency()
+
+        if is_em:
+            pulse_r = int(23 + 4 * math.sin(self.pulse_phase * 1.4))
+            pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ax, ay), pulse_r, 3)
+            pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ax, ay), pulse_r - 8, 1)
+            # Exclamation markers matching mockup
+            for ex, ey in ((ax - 24, ay - 20), (ax + 22, ay + 18)):
+                pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ex, ey), 7)
+                self.screen.blit(self.font_tiny.render("!", True, config.COLOR_WHITE), (ex - 2, ey - 7))
+            plane_col = (218, 45, 52)
+        elif ac.fuel_level < 40.0:
+            plane_col = (232, 178, 38)
+        elif ac.aircraft_size == "HEAVY":
+            plane_col = (72, 138, 228)
+        else:
+            plane_col = (224, 232, 240)
+
+        if is_selected:
+            pygame.draw.circle(self.screen, config.COLOR_CYAN, (ax, ay), 26, 2)
+
+        scale = 1.25 if ac.aircraft_size == "HEAVY" else (0.95 if ac.aircraft_size == "SMALL" else 1.1)
+        self._draw_plane_sprite(ac.x, ac.y, ac.heading, plane_col, scale=scale)
+
+        # Crisp compact flight tag (clamped inside left radar canvas)
+        tag_col = (255, 115, 115) if is_em else config.COLOR_WHITE
+        stage_lbl = "HOLD" if ac.status == FlightStatus.HOLDING else ("LAND" if ac.status == FlightStatus.ROLLING_LAND else "APP")
+        tag_txt = f"{ac.flight_id} {int(ac.fuel_level)}% [{stage_lbl}]"
+        if ac.aircraft_size == "HEAVY":
+            tag_txt += " [HVY]"
+        lbl = self.font_tiny.render(tag_txt, True, tag_col)
+        bg_w = lbl.get_width() + 8
+        tag_x = ax + 16
+        if tag_x + bg_w > config.CANVAS_WIDTH - 6:
+            tag_x = max(6, ax - 16 - bg_w)
+        tag_y = max(config.TOP_BAR_HEIGHT + 4, min(config.WINDOW_HEIGHT - 54, ay - 22))
+        bg = pygame.Rect(tag_x, tag_y, bg_w, 16)
+        pygame.draw.rect(self.screen, (14, 24, 38), bg, border_radius=3)
+        self.screen.blit(lbl, (bg.x + 4, bg.y + 1))
+
