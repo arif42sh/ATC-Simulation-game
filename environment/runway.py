@@ -77,3 +77,35 @@ class Runway:
         self.total_operations_handled += 1
         return True
 
+    def occupy(self, flight_id: str, duration_seconds: float = 25.0):
+        """Force-marks runway Occupied (used by scenario setup or landing roll)."""
+        self.status = RunwayStatus.OCCUPIED
+        self.status_reason = f"Active rollout: {flight_id}"
+        self.current_aircraft = flight_id
+        self.occupancy_timer = duration_seconds
+        self.total_operations_handled += 1
+
+    def set_unavailable(self, reason: str = "Weather / Crosswind", duration_seconds: float = 18.0):
+        """Marks runway temporarily Unavailable."""
+        self.status = RunwayStatus.UNAVAILABLE
+        self.status_reason = reason
+        self.current_aircraft = None
+        self.occupancy_timer = 0.0
+        self.closure_timer = duration_seconds
+
+    def set_maintenance(self, reason: str = "Scheduled Inspection", duration_seconds: float = 20.0):
+        """Marks runway Under Maintenance."""
+        self.status = RunwayStatus.UNDER_MAINTENANCE
+        self.status_reason = reason
+        self.current_aircraft = None
+        self.occupancy_timer = 0.0
+        self.closure_timer = duration_seconds
+
+    def release(self):
+        """Restores runway to Available state."""
+        self.status = RunwayStatus.AVAILABLE
+        self.status_reason = ""
+        self.current_aircraft = None
+        self.occupancy_timer = 0.0
+        self.closure_timer = 0.0
+
