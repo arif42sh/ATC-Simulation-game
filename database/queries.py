@@ -141,3 +141,51 @@ class DatabaseLogger:
             (decision_id, aircraft_id, flight_id, selected_runway, decision_type),
         )
 
+    def log_feedback(
+        self,
+        decision_id: Optional[int],
+        flight_id: str,
+        validation_result: str,
+        execution_result: str,
+        feedback_details: str,
+    ):
+        self.db.execute(
+            """INSERT INTO feedback (decision_id, flight_id, validation_result, execution_result, feedback_details)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (decision_id, flight_id, validation_result, execution_result, feedback_details),
+        )
+
+    def log_event(self, level_id: int, event_type: str, description: str, aircraft_id: str = "", runway_id: str = ""):
+        self.db.execute(
+            """INSERT INTO simulation_events (level_id, aircraft_id, runway_id, event_type, event_description)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (level_id, aircraft_id, runway_id, event_type, description),
+        )
+
+    def log_level_history(self, level_id: int, status: str, final_score: int, landings: int, emergencies: int):
+        self.db.execute(
+            """INSERT INTO level_history (level_id, completion_status, final_score, total_landings, total_emergencies)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (level_id, status, final_score, landings, emergencies),
+        )
+
+    def log_reward(self, level_id: int, flight_id: str, event_type: str, reward_points: int):
+        self.db.execute(
+            """INSERT INTO reward_history (level_id, aircraft_id, event_type, reward_points)
+               VALUES (%s, %s, %s, %s)""",
+            (level_id, flight_id, event_type, reward_points),
+        )
+
+    # -------------------------------------------------------------------------
+    # Read / Analytics Queries (For Main Menu, Level Select & AI & DB Stats)
+    # -------------------------------------------------------------------------
+
+    def get_global_counters(self) -> Dict[str, int]:
+        """Returns global Aircraft Landed & Hi-Score for top HUD."""
+        landed_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM aircraft WHERE aircraft_status = 'LANDED'")
+        hi_row = self.db.fetchone("SELECT MAX(final_score) as best FROM level_history")
+        return {
+            "aircraft_landed": int((landed_row or {}).get("cnt") or 0),
+            "hi_score": max(0, int((hi_row or {}).get("best") or 0)),
+        }
+
