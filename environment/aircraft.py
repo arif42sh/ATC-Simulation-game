@@ -20,8 +20,10 @@ class EmergencyType:
 
 class FlightStatus:
     HOLDING = "HOLDING"            # Orbiting in perimeter holding pattern
+    HOLD = "HOLDING"               # Alias for casual mode
     INTERCEPT = "INTERCEPT"        # Turning to intercept assigned runway approach fix
     APPROACHING = "APPROACHING"    # Final approach glideslope toward runway threshold
+    APPROACH = "APPROACHING"       # Alias for casual mode
     ROLLING_LAND = "ROLLING_LAND"  # Touchdown & deceleration along runway centerline
     LANDED = "LANDED"              # Safely landed and vacated runway
     CRASHED = "CRASHED"            # Fuel exhausted or runway collision
@@ -79,22 +81,6 @@ class Aircraft:
         self.orbit_x, self.orbit_y = float(orbit_center[0]), float(orbit_center[1])
         self.orbit_radius = float(orbit_radius)
 
-        # Assigned runway geometry vectors (populated when cleared)
-        self.approach_x = 200.0
-        self.approach_y = 315.0
-        self.rwy_start_x = 235.0
-        self.rwy_start_y = 315.0
-        self.rwy_end_x = 625.0
-        self.rwy_end_y = 315.0
-        self.rwy_ux = 1.0
-        self.rwy_uy = 0.0
-        self.rwy_angle_deg = 0.0
-
-        self.speed = self.cruise_speed
-        self.heading = math.degrees(math.atan2(self.orbit_y - self.y, self.orbit_x - self.x))
-        self.altitude_ft = 3800.0
-        self.distance_nm = self._compute_airbase_distance_nm()
-
         self.trail: List[Tuple[float, float]] = [(self.x, self.y)]
         self.touchdown_occurred = False
         self.touchdown_sound_played = False
@@ -103,6 +89,14 @@ class Aircraft:
         self.hold_conflict_rewarded = False
         self.db_aircraft_id: Optional[int] = None
         self.db_request_id: Optional[int] = None
+
+    @property
+    def orbit_center_x(self) -> float:
+        return self.orbit_x
+
+    @property
+    def orbit_center_y(self) -> float:
+        return self.orbit_y
 
     def _compute_airbase_distance_nm(self) -> float:
         """Computes approximate distance from airbase center (420, 380) in NM."""
