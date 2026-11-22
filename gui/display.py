@@ -183,13 +183,21 @@ class DisplayRenderer:
         active_ac: Optional[Aircraft] = None,
     ):
         """Draws the concrete airbase pad, Helipad (H), and 2-4 active runways."""
-        is_multi_runway = len(airbase.runways) >= 3
-        if is_multi_runway:
+        rwy_count = len(airbase.runways)
+        if rwy_count >= 4:
             tarmac_pts = [
-                (165, 180), (675, 180), (695, 215), (695, 490),
-                (595, 605), (205, 605), (165, 510),
+                (170, 185), (675, 185), (700, 220), (690, 345),
+                (655, 380), (645, 505), (615, 525), (385, 660),
+                (335, 660), (235, 600), (175, 520), (155, 450), (155, 240),
             ]
-            hx, hy, hr, h_ring, h_font = 202, 470, 24, 19, self.font_big_stat
+            hx, hy, hr, h_ring, h_font = 215, 420, 28, 22, self.font_title
+        elif rwy_count == 3:
+            tarmac_pts = [
+                (170, 200), (675, 200), (700, 235), (690, 375),
+                (665, 410), (615, 440), (345, 615), (245, 615),
+                (175, 545), (155, 475), (155, 260),
+            ]
+            hx, hy, hr, h_ring, h_font = 215, 445, 28, 22, self.font_title
         else:
             tarmac_pts = [
                 (175, 195), (655, 195), (680, 225), (680, 420),
@@ -307,9 +315,17 @@ class DisplayRenderer:
             st_txt = f"{rwy.id} {rwy.status.upper()}"
 
         lbl = self.font_tiny.render(st_txt, True, st_col)
-        bx = int(rwy.center_x - lbl.get_width() // 2 - 6)
-        by = int(rwy.center_y - 34)
-        pill = pygame.Rect(bx, by, lbl.get_width() + 12, 18)
+        pill_w, pill_h = lbl.get_width() + 12, 18
+        # Perpendicular normal offset to place status pill cleanly outside the runway strip
+        # so it never collides with rolling planes or floating texts
+        nx, ny = -rwy.uy, rwy.ux
+        if ny > 0:
+            nx, ny = -nx, -ny
+        cx = rwy.center_x + nx * 28.0
+        cy = rwy.center_y + ny * 28.0
+        bx = int(cx - pill_w // 2)
+        by = int(cy - pill_h // 2)
+        pill = pygame.Rect(bx, by, pill_w, pill_h)
         pygame.draw.rect(self.screen, (14, 24, 38), pill, border_radius=4)
         pygame.draw.rect(self.screen, st_col, pill, 1, border_radius=4)
         self.screen.blit(lbl, (bx + 6, by + 2))
