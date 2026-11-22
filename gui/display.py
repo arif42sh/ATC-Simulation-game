@@ -606,11 +606,18 @@ class DisplayRenderer:
         for p in self.particles:
             p.draw(self.screen)
 
+        # AI Co-Pilot Recommendation Visual Guide
+        co_pilot_target = agent.get_co_pilot_target() if hasattr(agent, "get_co_pilot_target") else None
+        if co_pilot_target and not drag_state:
+            cp_ac, cp_rwy = co_pilot_target
+            self._draw_co_pilot_guide(cp_ac, cp_rwy)
+
         # Aircraft sprites + emergency circles + fuel % badges
         for ac in airbase.aircraft_fleet:
             if not ac.is_active_in_airspace():
                 continue
-            self._draw_gameplay_aircraft(ac, is_selected=(selected_ac is ac))
+            is_cp = (co_pilot_target is not None and co_pilot_target[0] is ac)
+            self._draw_gameplay_aircraft(ac, is_selected=(selected_ac is ac), is_co_pilot_target=is_cp)
 
         # Floating score popups
         for f in self.floating_texts:
@@ -654,12 +661,46 @@ class DisplayRenderer:
         elif is_paused:
             self._render_pause_overlay()
 
-    def _draw_gameplay_aircraft(self, ac: Aircraft, is_selected: bool):
+    def _get_fuel_ring_color(self, fuel: float) -> Tuple[int, int, int]:
+        """Returns clean visual color for circular aircraft fuel gauge."""
+        if fuel > 50.0:
+            return (50, 220, 90)
+        elif fuel >= 20.0:
+            return (255, 185, 35)
+        else:
+            return (240, 50, 50)
+
+    def _draw_co_pilot_guide(self, ac: Aircraft, rwy):
+        """Draws an animated glowing trajectory guide from Co-Pilot target aircraft to recommended runway."""
+        pulse = 0.5 + 0.5 * math.sin(self.pulse_phase * 2.0)
+        guide_col = (int(46 + 30 * pulse), int(224 + 31 * pulse), 255)
+
+        # Draw glowing line from plane to runway approach threshold
+        self._draw_dotted_line((ac.x, ac.y), (rwy.approach_x, rwy.approach_y), guide_col, spacing=10, radius=2)
+
+        # Pulsing target indicator at runway entry
+        pr = int(10 + 4 * pulse)
+        pygame.draw.circle(self.screen, guide_col, (int(rwy.approach_x), int(rwy.approach_y)), pr, 2)
+        rec_lbl = self.font_tiny.render(f"AI REC: {rwy.id}", True, guide_col)
+        self.screen.blit(rec_lbl, (int(rwy.approach_x) + 12, int(rwy.approach_y) - 8))
+
+    def _draw_gameplay_aircraft(
+        self,
+        ac: Aircraft,
+        is_selected: bool,
+        is_co_pilot_target: bool = False,
+    ):
         ax, ay = int(ac.x), int(ac.y)
         is_em = ac.is_emergency()
 
+        # Circular Fuel Gauge Ring around aircraft sprite
+        fuel_col = self._get_fuel_ring_color(ac.fuel_level)
+        ring_r = 19
+        pygame.draw.circle(self.screen, (25, 38, 55), (ax, ay), ring_r, 2)
+        pygame.draw.circle(self.screen, fuel_col, (ax, ay), ring_r, 2 if not is_em else 3)
+
         if is_em:
-            pulse_r = int(23 + 4 * math.sin(self.pulse_phase * 1.4))
+            pulse_r = int(24 + 4 * math.sin(self.pulse_phase * 1.4))
             pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ax, ay), pulse_r, 3)
             pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ax, ay), pulse_r - 8, 1)
             # Exclamation markers matching mockup
@@ -674,18 +715,32 @@ class DisplayRenderer:
         else:
             plane_col = (224, 232, 240)
 
+        # Co-Pilot Recommendation Halo
+        if is_co_pilot_target and not is_em:
+            pulse = 0.5 + 0.5 * math.sin(self.pulse_phase * 2.5)
+            cp_halo_r = int(23 + 4 * pulse)
+            pygame.draw.circle(self.screen, config.COLOR_CYAN, (ax, ay), cp_halo_r, 2)
+
         if is_selected:
-            pygame.draw.circle(self.screen, config.COLOR_CYAN, (ax, ay), 26, 2)
+            pygame.draw.circle(self.screen, config.COLOR_WHITE, (ax, ay), 26, 2)
 
         scale = 1.25 if ac.aircraft_size == "HEAVY" else (0.95 if ac.aircraft_size == "SMALL" else 1.1)
         self._draw_plane_sprite(ac.x, ac.y, ac.heading, plane_col, scale=scale)
 
-        # Crisp compact flight tag (clamped inside left radar canvas)
+        # Casual Decluttered Flight Tag (clean callsign by default, detailed on select/emergency)
         tag_col = (255, 115, 115) if is_em else config.COLOR_WHITE
-        stage_lbl = "HOLD" if ac.status == FlightStatus.HOLDING else ("LAND" if ac.status == FlightStatus.ROLLING_LAND else "APP")
-        tag_txt = f"{ac.flight_id} {int(ac.fuel_level)}% [{stage_lbl}]"
-        if ac.aircraft_size == "HEAVY":
-            tag_txt += " [HVY]"
+        if is_selected or is_em:
+            stage_lbl = "HOLD" if ac.status == FlightStatus.HOLDING else ("LAND" if ac.status == FlightStatus.ROLLING_LAND else "APP")
+            tag_txt = f"{ac.flight_id} {int(ac.fuel_level)}% [{stage_lbl}]"
+            if ac.aircraft_size == "HEAVY":
+                tag_txt += " [HVY]"
+        else:
+            tag_txt = ac.flight_id
+            if is_co_pilot_target:
+                tag_txt += " [AI]"
+            elif ac.aircraft_size == "HEAVY":
+                tag_txt += " [H]"
+
         lbl = self.font_tiny.render(tag_txt, True, tag_col)
         bg_w = lbl.get_width() + 8
         tag_x = ax + 16
