@@ -39,6 +39,7 @@ class SkyATCGame:
         self.airbase = Airbase(level_id=1)
         self.level_mgr = LevelManager(self.airbase)
         self.agent = ATCAgent(self.airbase, self.db_logger)
+        self.agent.auto_takeover_enabled = False  # Casual mode: player retains command
         self.renderer = DisplayRenderer(self.screen)
         self.sound = SoundManager()
         self.action_panel = ActionPanel()
@@ -55,6 +56,10 @@ class SkyATCGame:
         self.override_mode = False
         self.drag_state: Optional[Dict[str, Any]] = None
         self.modal_state: Optional[Dict[str, Any]] = None
+
+        # Casual dopamine scoring & combo streaks
+        self.combo_streak: int = 0
+        self.last_landing_time: float = -999.0
 
         self._seen_emergency_ids: set = set()
         self._cached_global = self.db_logger.get_global_counters()
@@ -192,16 +197,16 @@ class SkyATCGame:
                            bg_color=(52, 62, 82), hover_color=(76, 92, 118), font_size=12),
                 ])
 
-                # Sidebar HITL primary actions
+                # Sidebar HITL primary actions: 1-Click Clear Landing (Space) + Override
                 active_ctl = not self.is_paused
                 buttons.extend([
-                    Button(992, 586, 170, 48, "ACCEPT AI PLAN", self._on_accept_ai_plan,
+                    Button(992, 586, 210, 48, "CLEAR LANDING [SPACE]", self._on_clear_landing_space,
                            bg_color=(26, 148, 64), hover_color=(38, 185, 84), border_color=config.COLOR_PRIMARY_GREEN,
-                           font_size=13, enabled=active_ctl),
-                    Button(1172, 586, 171, 48, "OVERRIDE", self._toggle_override_mode,
+                           font_size=12, enabled=active_ctl),
+                    Button(1208, 586, 135, 48, "OVERRIDE", self._toggle_override_mode,
                            bg_color=(195, 96, 32) if self.override_mode else (155, 64, 32),
                            hover_color=(225, 115, 42), border_color=config.COLOR_WARN_AMBER,
-                           font_size=13, enabled=active_ctl, selected=self.override_mode),
+                           font_size=12, enabled=active_ctl, selected=self.override_mode),
                 ])
 
                 # Quick manual runway override buttons (RWY 1..N + HOLD)
@@ -323,6 +328,40 @@ class SkyATCGame:
                 self.selected_aircraft = pending[0]
         self._rebuild_buttons()
 
+    def _on_clear_landing_space(self) -> bool:
+        """1-Click Spacebar clearance for the Co-Pilot's top actionable aircraft."""
+        target = self.agent.get_co_pilot_target()
+        if not target:
+            self.sound.play("warning")
+            self.renderer.add_floating_text("ALL RUNWAYS BUSY - HOLDING!", config.CANVAS_WIDTH // 2, 110, config.COLOR_WARN_AMBER)
+            return False
+
+        ac, rwy = target
+        ok, msg = self.agent.override_assignment(ac.flight_id, rwy.id, decision_type="CO_PILOT_CLEARANCE")
+        if ok:
+            self.sound.play("click")
+            self.selected_aircraft = None
+            self.override_mode = False
+            self.agent.reward_system.evaluate_action("AI_SYNERGY_BONUS", ac.flight_id, "Co-pilot 1-click synergy")
+            self.renderer.add_floating_text(f"+{config.AI_SYNERGY_BONUS_PTS} AI SYNERGY!", ac.x, ac.y - 30, config.COLOR_CYAN)
+            self._rebuild_buttons()
+            return True
+        else:
+            self.sound.play("warning")
+            self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CRITICAL_RED)
+            return False
+
+    def _calculate_stars(self, crashed: bool, score: int, max_score: int) -> int:
+        if crashed:
+            return 0
+        pct = (score / max(1, max_score)) if max_score > 0 else 1.0
+        if pct >= 0.75:
+            return 3
+        elif pct >= 0.45:
+            return 2
+        else:
+            return 1
+
     def _on_accept_ai_plan(self):
         if self.agent.accept_ai_plan():
             self.sound.play("click")
@@ -339,6 +378,13 @@ class SkyATCGame:
             target = pending[0] if pending else None
 
         if not target:
+            return
+
+        # Zero-penalty guardrail check
+        is_safe, guard_msg = self.agent.validate_guardrail(target, runway_id)
+        if not is_safe:
+            self.sound.play("warning")
+            self.renderer.add_floating_text(guard_msg, target.x, target.y - 24, config.COLOR_CRITICAL_RED)
             return
 
         ok, msg = self.agent.override_assignment(target.flight_id, runway_id)
@@ -396,7 +442,20 @@ class SkyATCGame:
                         ac.touchdown_sound_played = True
                         self.sound.play("landing")
                         self.renderer.add_touchdown_smoke(ac.x, ac.y)
-                        self.renderer.add_floating_text(f"{ac.flight_id} LANDED!", ac.x, ac.y - 22, config.COLOR_PRIMARY_GREEN)
+
+                        # Casual dopamine scoring & combo streaks
+                        now_s = pygame.time.get_ticks() / 1000.0
+                        if now_s - self.last_landing_time <= config.COMBO_TIMEOUT_SECONDS:
+                            self.combo_streak += 1
+                            streak_pts = config.COMBO_STREAK_BONUS_PTS * (self.combo_streak - 1)
+                            self.agent.reward_system.evaluate_action("COMBO_STREAK", ac.flight_id, f"Streak x{self.combo_streak}")
+                            self.renderer.add_floating_text(f"COMBO x{self.combo_streak}! +{streak_pts}", ac.x, ac.y - 42, (255, 215, 65))
+                        else:
+                            self.combo_streak = 1
+                        self.last_landing_time = now_s
+
+                        self.agent.reward_system.evaluate_action("TOUCHDOWN_REWARD", ac.flight_id, "Touchdown bonus")
+                        self.renderer.add_floating_text(f"{ac.flight_id} LANDED! +{config.TOUCHDOWN_PTS}", ac.x, ac.y - 20, config.COLOR_PRIMARY_GREEN)
 
                 if crashed_ac:
                     self._trigger_crash_modal(crashed_ac)
@@ -447,10 +506,15 @@ class SkyATCGame:
         self.db_logger.log_level_history(self.level_mgr.current_level, "COMPLETED", score, landed, emerg)
         self.db_logger.log_event(self.level_mgr.current_level, "LEVEL_COMPLETE", f"Completed Level {self.level_mgr.current_level} with {score} pts")
 
+        total_ac = self.level_mgr.level_cfg.get("total_aircraft", 10)
+        max_pot = max(100, total_ac * 150)
+        stars = self._calculate_stars(crashed=False, score=score, max_score=max_pot)
+
         self.modal_state = {
             "type": "COMPLETE",
             "title": f"LEVEL {self.level_mgr.current_level:02d} COMPLETE!",
             "subtitle": f"All {landed} incoming aircraft landed safely ({self.level_mgr.level_cfg['difficulty']}).",
+            "stars": stars,
             "score": score,
             "landings": landed,
             "emergencies": emerg,
@@ -550,15 +614,20 @@ class SkyATCGame:
                         r_id = self._find_hovered_runway(mx, my)
                         if r_id:
                             sel_ac = self.selected_aircraft
-                            ok, msg = self.agent.override_assignment(sel_ac.flight_id, r_id)
-                            if ok:
-                                self.sound.play("click")
-                                self.selected_aircraft = None
-                                self.override_mode = False
-                                self.renderer.add_floating_text(msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CYAN)
-                            else:
+                            is_safe, guard_msg = self.agent.validate_guardrail(sel_ac, r_id)
+                            if not is_safe:
                                 self.sound.play("warning")
-                                self.renderer.add_floating_text(msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CRITICAL_RED)
+                                self.renderer.add_floating_text(guard_msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CRITICAL_RED)
+                            else:
+                                ok, msg = self.agent.override_assignment(sel_ac.flight_id, r_id)
+                                if ok:
+                                    self.sound.play("click")
+                                    self.selected_aircraft = None
+                                    self.override_mode = False
+                                    self.renderer.add_floating_text(msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CYAN)
+                                else:
+                                    self.sound.play("warning")
+                                    self.renderer.add_floating_text(msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CRITICAL_RED)
                             self._rebuild_buttons()
                         else:
                             self.selected_aircraft = None
@@ -596,20 +665,25 @@ class SkyATCGame:
                     ac = self.drag_state["aircraft"]
                     self.drag_state = None
                     if r_id:
-                        ok, msg = self.agent.override_assignment(ac.flight_id, r_id)
-                        if ok:
-                            self.sound.play("click")
-                            self.selected_aircraft = None
-                            self.override_mode = False
-                            self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CYAN)
-                        else:
+                        is_safe, guard_msg = self.agent.validate_guardrail(ac, r_id)
+                        if not is_safe:
                             self.sound.play("warning")
-                            self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CRITICAL_RED)
+                            self.renderer.add_floating_text(guard_msg, ac.x, ac.y - 24, config.COLOR_CRITICAL_RED)
+                        else:
+                            ok, msg = self.agent.override_assignment(ac.flight_id, r_id)
+                            if ok:
+                                self.sound.play("click")
+                                self.selected_aircraft = None
+                                self.override_mode = False
+                                self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CYAN)
+                            else:
+                                self.sound.play("warning")
+                                self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CRITICAL_RED)
                         self._rebuild_buttons()
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
-                        self._on_accept_ai_plan()
+                        self._on_clear_landing_space()
                     elif event.key == pygame.K_h:
                         self._manual_assign_selected("HOLD")
                     elif event.key in (pygame.K_1, pygame.K_KP1):

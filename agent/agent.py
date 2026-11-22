@@ -242,9 +242,9 @@ class ATCAgent:
             self._refresh_plan_after_action()
         return executed_any
 
-    def override_assignment(self, flight_id: str, runway_id: Optional[str]) -> tuple[bool, str]:
+    def override_assignment(self, flight_id: str, runway_id: Optional[str], decision_type: str = "OVERRIDE") -> tuple[bool, str]:
         """
-        Player manual override (via Drag-and-Draw path or right-panel Override selector).
+        Player manual override or Co-pilot clearance.
         Passes through the 9-rule PlanValidator before execution!
         """
         ac = self.airbase.get_aircraft(flight_id)
@@ -259,7 +259,7 @@ class ATCAgent:
             self.stats["player_overrides"] += 1
             if self.db_logger:
                 dec_id = self._last_decision_id_by_flight.get(flight_id)
-                self.db_logger.log_player_decision(dec_id, ac.db_aircraft_id, flight_id, "HOLD", "OVERRIDE")
+                self.db_logger.log_player_decision(dec_id, ac.db_aircraft_id, flight_id, "HOLD", decision_type)
                 self.db_logger.sync_runways(self.airbase.level_id, self.airbase.runways)
             self._refresh_plan_after_action()
             return True, f"{flight_id} placed in Holding Orbit."
@@ -270,7 +270,7 @@ class ATCAgent:
                 "priority": 1,
                 "assigned_runway": runway_id,
                 "action": "AUTHORIZE_LANDING",
-                "rationale": "Manual player override",
+                "rationale": f"Player clearance ({decision_type})",
             }]
         }
         current_state = self.observer.observe()
@@ -292,11 +292,12 @@ class ATCAgent:
             return False, reason
 
         if self.airbase.authorize_landing(flight_id, runway_id):
-            ac.decision_maker = "HUMAN_OVERRIDE"
+            ac.decision_maker = "CO_PILOT" if decision_type != "OVERRIDE" else "HUMAN_OVERRIDE"
             self.stats["player_overrides"] += 1
-            self._record_landing_rewards(ac, runway_id, decision_type="OVERRIDE", is_override=True)
+            self._record_landing_rewards(ac, runway_id, decision_type=decision_type, is_override=(decision_type == "OVERRIDE"))
             self._refresh_plan_after_action()
-            return True, f"Override Cleared: {flight_id} -> {runway_id}"
+            label = "Cleared" if decision_type != "OVERRIDE" else "Override Cleared"
+            return True, f"{label}: {flight_id} -> {runway_id}"
 
         return False, f"Could not assign {flight_id} to {runway_id}."
 

@@ -880,8 +880,14 @@ class DisplayRenderer:
         pygame.draw.rect(self.screen, accent, m_rect, 2, border_radius=12)
 
         title = modal.get("title", "LEVEL SUMMARY")
-        self.screen.blit(self.font_title.render(title, True, accent), (mx + 28, my + 22))
-        self.screen.blit(self.font_body_bold.render(modal.get("subtitle", ""), True, config.COLOR_WHITE), (mx + 28, my + 68))
+        self.screen.blit(self.font_title.render(title, True, accent), (mx + 28, my + 18))
+        if "stars" in modal:
+            stars = modal["stars"]
+            star_label = f"RATING: {'★ ' * stars}{'☆ ' * (3 - stars)}"
+            self.screen.blit(self.font_header.render(star_label, True, (255, 215, 65)), (mx + 28, my + 52))
+            self.screen.blit(self.font_body_bold.render(modal.get("subtitle", ""), True, config.COLOR_WHITE), (mx + 28, my + 78))
+        else:
+            self.screen.blit(self.font_body_bold.render(modal.get("subtitle", ""), True, config.COLOR_WHITE), (mx + 28, my + 68))
 
         # Summary metric strip
         stats_box = pygame.Rect(mx + 28, my + 102, mw - 56, 56)
