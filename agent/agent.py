@@ -35,6 +35,7 @@ class ATCAgent:
         self.validator = PlanValidator()
         self.planner = GoalBasedPlanner(self.llm_client, self.validator, self.decision_engine)
         self.reward_system = RewardSystem(self.db_logger)
+        self.auto_takeover_enabled: bool = True
 
         self.last_observed_state: Dict[str, Any] = {}
         self.notifications: List[str] = []
@@ -121,8 +122,9 @@ class ATCAgent:
                     if ac.hitl_decision_timer < 2.0:
                         ac.hitl_decision_timer = 2.0
                 elif ac.hitl_pending and ac.hitl_decision_timer <= 0.0:
-                    if self._execute_timeout_takeover(ac, current_state):
-                        break
+                    if self.auto_takeover_enabled:
+                        if self._execute_timeout_takeover(ac, current_state):
+                            break
 
         # Sync landed outcomes to DB once
         if self.db_logger:
@@ -329,3 +331,55 @@ class ATCAgent:
         self.notifications.append(msg)
         if len(self.notifications) > 4:
             self.notifications.pop(0)
+
+    def get_co_pilot_target(self) -> Optional[tuple[Aircraft, Any]]:
+        """
+        Returns the highest-priority aircraft that currently has an available,
+        compatible runway assigned in the AI plan.
+        Returns: tuple[Aircraft, Runway] or None.
+        """
+        current_state = self.observer.observe()
+        plan = self.planner.current_plan or self.planner.generate_plan(current_state, trigger_async_llm=False)
+        assignments = plan.get("assignments", []) if plan else []
+
+        # Priority 1: Check active assignments in generated plan
+        for item in assignments:
+            if item.get("action") == "AUTHORIZE_LANDING" and item.get("assigned_runway"):
+                fid = item.get("flight_id")
+                rwy_id = item.get("assigned_runway")
+                ac = self.airbase.get_aircraft(fid)
+                rwy = self.airbase.runways.get(rwy_id)
+                if ac and rwy and ac.is_active_in_airspace() and ac.status == FlightStatus.HOLDING:
+                    if rwy.is_available() and rwy.supports_aircraft(ac.min_runway_length_m):
+                        return ac, rwy
+
+        # Priority 2: Fallback to highest ranked pending aircraft with an open compatible runway
+        for ac in self.airbase.get_ranked_pending_aircraft():
+            if ac.status != FlightStatus.HOLDING:
+                continue
+            for rwy in self.airbase.get_available_runways():
+                if rwy.supports_aircraft(ac.min_runway_length_m):
+                    return ac, rwy
+
+        return None
+
+    def validate_guardrail(self, aircraft: Aircraft, runway_id: str) -> tuple[bool, str]:
+        """
+        Zero-penalty safety guardrail for casual gameplay.
+        Validates whether assigning `aircraft` to `runway_id` is physically and operationally safe.
+        Does NOT deduct penalty points from reward_system!
+        """
+        if runway_id == "HOLD":
+            return True, "Cleared to holding orbit."
+
+        rwy = self.airbase.runways.get(runway_id)
+        if not rwy:
+            return False, f"Unknown runway '{runway_id}'."
+
+        if not rwy.is_available():
+            return False, f"HOLD! {rwy.id} is occupied by {rwy.current_aircraft or 'another aircraft'}."
+
+        if not rwy.supports_aircraft(aircraft.min_runway_length_m):
+            return False, f"HOLD! {rwy.id} is too short ({rwy.length_m}m) for {aircraft.model} ({aircraft.min_runway_length_m}m required)!"
+
+        return True, f"Cleared for landing on {rwy.id}."
