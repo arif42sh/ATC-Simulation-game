@@ -302,6 +302,10 @@ REWARDS: Dict[str, int] = {
     "RUNWAY_CONFLICT": -25,
     "INVALID_AI_DECISION": -15,
     "UNSAFE_DECISION": -30,
+    # Casual Dopamine & AI Co-Pilot Rewards
+    "AI_SYNERGY_BONUS": AI_SYNERGY_BONUS_PTS,
+    "TOUCHDOWN_REWARD": TOUCHDOWN_PTS,
+    "COMBO_STREAK": COMBO_STREAK_BONUS_PTS,
 }
 
 # -----------------------------------------------------------------------------
