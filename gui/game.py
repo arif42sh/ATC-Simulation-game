@@ -191,24 +191,24 @@ class SkyATCGame:
                     buttons.append(Button(mx + 546, by, 180, 42, label, self._advance_tutorial,
                                           bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=13))
                 else:
-                    mw, mh = 620, 440
+                    mw, mh = 640, 500
                     mx, my = (config.WINDOW_WIDTH - mw) // 2, (config.WINDOW_HEIGHT - mh) // 2
-                    by = my + mh - 70
+                    by = my + mh - 66
                     if self.modal_state["type"] == "COMPLETE" and self.level_mgr.current_level < 20:
-                        buttons.append(Button(mx + 42, by, 170, 44, "NEXT LEVEL",
+                        buttons.append(Button(mx + 45, by, 172, 44, "NEXT LEVEL",
                                               lambda: self.start_level(self.level_mgr.current_level + 1),
                                               bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
-                        buttons.append(Button(mx + 226, by, 168, 44, "REPLAY LEVEL",
+                        buttons.append(Button(mx + 234, by, 172, 44, "REPLAY LEVEL",
                                               lambda: self.start_level(self.level_mgr.current_level),
                                               bg_color=(36, 86, 152), hover_color=(52, 114, 196), border_color=config.COLOR_CYAN, font_size=14))
-                        buttons.append(Button(mx + 408, by, 168, 44, "MAIN MENU",
+                        buttons.append(Button(mx + 423, by, 172, 44, "MAIN MENU",
                                               self._exit_modal_to_menu,
                                               bg_color=(82, 54, 42), hover_color=(118, 76, 58), font_size=14))
                     else:
-                        buttons.append(Button(mx + 95, by, 200, 44, "RETRY LEVEL",
+                        buttons.append(Button(mx + 105, by, 205, 44, "RETRY LEVEL",
                                               lambda: self.start_level(self.level_mgr.current_level),
                                               bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
-                        buttons.append(Button(mx + 325, by, 200, 44, "MAIN MENU",
+                        buttons.append(Button(mx + 330, by, 205, 44, "MAIN MENU",
                                               self._exit_modal_to_menu,
                                               bg_color=(110, 48, 52), hover_color=(148, 64, 68), border_color=config.COLOR_CRITICAL_RED, font_size=14))
 
