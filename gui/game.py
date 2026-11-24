@@ -283,27 +283,27 @@ class SkyATCGame:
         buttons: List[Button] = []
 
         if self.rules_open:
-            mw, mh = 760, 480
+            mw, mh = 800, 500
             mx = (config.WINDOW_WIDTH - mw) // 2
             my = (config.WINDOW_HEIGHT - mh) // 2
 
             tabs = [
-                ("CONTROLS", "CONTROLS", mx + 36),
-                ("CO-PILOT MODES", "CO-PILOT", mx + 204),
-                ("SCORING", "SCORING", mx + 372),
-                ("SAFETY RULES", "SAFETY", mx + 540),
+                ("CONTROLS", "CONTROLS", mx + 30),
+                ("CO-PILOT MODES", "CO-PILOT", mx + 218),
+                ("SCORING", "SCORING", mx + 406),
+                ("SAFETY RULES", "SAFETY", mx + 594),
             ]
             for label, t_key, tx in tabs:
                 is_active = (self.rules_tab == t_key)
                 bg = (34, 62, 96) if is_active else (18, 28, 42)
                 hv = (48, 86, 132) if is_active else (28, 42, 62)
                 brd = config.COLOR_CYAN if is_active else (44, 64, 88)
-                buttons.append(Button(tx, my + 54, 160, 32, label,
+                buttons.append(Button(tx, my + 54, 176, 32, label,
                                       (lambda k=t_key: self._set_rules_tab(k)),
                                       bg_color=bg, hover_color=hv, border_color=brd, font_size=12))
 
             # Close button
-            buttons.append(Button(mx + (mw - 140) // 2, my + mh - 44, 140, 32, "CLOSE", self._close_rules,
+            buttons.append(Button(mx + (mw - 150) // 2, my + mh - 44, 150, 32, "CLOSE", self._close_rules,
                                   bg_color=(34, 76, 120), hover_color=(48, 102, 160), border_color=config.COLOR_CYAN, font_size=13))
 
             self.action_panel.set_buttons(buttons)

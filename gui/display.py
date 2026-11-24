@@ -1728,13 +1728,43 @@ class DisplayRenderer:
             t_surf = self.font_tiny.render(toast_msg, True, config.COLOR_PRIMARY_GREEN)
             self.screen.blit(t_surf, t_surf.get_rect(center=(box.centerx, my + 348)))
 
+    def _draw_wrapped_text(
+        self,
+        text: str,
+        font: pygame.font.Font,
+        color: Tuple[int, int, int],
+        x: int,
+        y: int,
+        max_width: int,
+        line_height: int = 15,
+    ) -> int:
+        """Wraps text strictly within max_width using font.size and renders lines."""
+        words = text.split(" ")
+        lines = []
+        cur_line = ""
+        for w in words:
+            test_line = f"{cur_line} {w}".strip() if cur_line else w
+            if font.size(test_line)[0] <= max_width:
+                cur_line = test_line
+            else:
+                if cur_line:
+                    lines.append(cur_line)
+                cur_line = w
+        if cur_line:
+            lines.append(cur_line)
+
+        for line in lines:
+            self.screen.blit(font.render(line, True, color), (x, y))
+            y += line_height
+        return y
+
     def render_rules_modal(self, active_tab: str = "CONTROLS"):
-        """Renders clean, professional classic operations manual & game rules modal."""
+        """Renders clean, professional classic operations manual & game rules modal with word wrapping."""
         dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
         dim.fill((6, 12, 20, 205))
         self.screen.blit(dim, (0, 0))
 
-        mw, mh = 760, 480
+        mw, mh = 800, 500
         mx = (config.WINDOW_WIDTH - mw) // 2
         my = (config.WINDOW_HEIGHT - mh) // 2
         box = pygame.Rect(mx, my, mw, mh)
@@ -1749,14 +1779,15 @@ class DisplayRenderer:
         self.screen.blit(title_surf, title_surf.get_rect(center=(box.centerx, my + 26)))
 
         # Tab bar separator line
-        pygame.draw.line(self.screen, (34, 52, 72), (mx + 30, my + 92), (mx + mw - 30, my + 92), 1)
+        pygame.draw.line(self.screen, (34, 52, 72), (mx + 30, my + 90), (mx + mw - 30, my + 90), 1)
 
         # Inner Content Panel
-        c_rect = pygame.Rect(mx + 36, my + 104, mw - 72, 316)
+        c_rect = pygame.Rect(mx + 30, my + 98, mw - 60, 346)
         pygame.draw.rect(self.screen, (11, 17, 28), c_rect, border_radius=8)
         pygame.draw.rect(self.screen, (28, 44, 64), c_rect, 1, border_radius=8)
 
-        px, py = c_rect.x + 22, c_rect.y + 16
+        px, py = c_rect.x + 20, c_rect.y + 14
+        max_w = c_rect.w - 40
 
         if active_tab == "CONTROLS":
             self.screen.blit(self.font_body_bold.render("AIRCRAFT NAVIGATION & CLEARANCE CONTROLS", True, (255, 215, 65)), (px, py))
@@ -1764,13 +1795,13 @@ class DisplayRenderer:
                 ("1. Drag-and-Draw Routing:", "Click and drag any holding aircraft toward an open runway. A green dotted path confirms safe alignment; red indicates an occupied or invalid runway.", config.COLOR_WHITE),
                 ("2. Co-Pilot Quick Clearance [SPACE]:", "Press SPACEBAR at any time to instantly authorize the recommendation prepared by the automated co-pilot.", config.COLOR_CYAN),
                 ("3. Direct Runway Assignment [1, 2, 3]:", "Select a holding flight, then press 1, 2, or 3 to directly clear Runway 1, 2, or 3 without dragging.", config.COLOR_WHITE),
-                ("4. Holding Orbit & Simulation Pause:", "Press [H] to direct selected flight into holding orbit. Press [P] to pause simulation anytime.", config.COLOR_TEXT_MUTED),
+                ("4. Holding Orbit & Simulation Pause [H / P]:", "Press [H] to direct selected flight into holding orbit. Press [P] to pause simulation anytime.", config.COLOR_TEXT_MUTED),
             ]
-            cy = py + 28
+            cy = py + 26
             for header, desc, h_col in items:
                 self.screen.blit(self.font_small.render(header, True, h_col), (px, cy))
-                self.screen.blit(self.font_tiny.render(desc, True, (180, 198, 215)), (px + 14, cy + 18))
-                cy += 44
+                cy = self._draw_wrapped_text(desc, self.font_tiny, (180, 198, 215), px + 12, cy + 17, max_w - 12, line_height=15)
+                cy += 8
 
         elif active_tab == "CO-PILOT":
             self.screen.blit(self.font_body_bold.render("CO-PILOT ASSISTANCE & TAKEOVER MODES", True, (255, 215, 65)), (px, py))
@@ -1779,20 +1810,11 @@ class DisplayRenderer:
                 ("HARDCORE MODE (Expert Challenge):", "All automated takeover rescues are DISABLED. If you fail to clear aircraft before fuel exhaustion or conflicts arise, aircraft will crash. Strict human ATC responsibility.", config.COLOR_CRITICAL_RED),
                 ("RELAXED MODE (Practice & Training):", "Expands decision window to 30 seconds for comfortable pacing. Recommended for learning multi-runway sequencing and emergency prioritization.", config.COLOR_PRIMARY_GREEN),
             ]
-            cy = py + 28
+            cy = py + 26
             for header, desc, h_col in items:
                 self.screen.blit(self.font_small.render(header, True, h_col), (px, cy))
-                words = desc.split()
-                line1, line2 = "", ""
-                for w in words:
-                    if len(line1 + " " + w) < 85:
-                        line1 += (" " if line1 else "") + w
-                    else:
-                        line2 += (" " if line2 else "") + w
-                self.screen.blit(self.font_tiny.render(line1, True, (180, 198, 215)), (px + 14, cy + 18))
-                if line2:
-                    self.screen.blit(self.font_tiny.render(line2, True, (180, 198, 215)), (px + 14, cy + 32))
-                cy += 54
+                cy = self._draw_wrapped_text(desc, self.font_tiny, (180, 198, 215), px + 12, cy + 17, max_w - 12, line_height=15)
+                cy += 10
 
         elif active_tab == "SCORING":
             self.screen.blit(self.font_body_bold.render("MISSION PERFORMANCE & 3-STAR RATING", True, (255, 215, 65)), (px, py))
@@ -1802,15 +1824,15 @@ class DisplayRenderer:
                 ("1 STAR (Assisted Landing):", "Airbase secured, but required multiple AI automated rescues.", (130, 225, 160)),
                 ("0 STARS (Mission Failed):", "Airfield collision occurred or 100% full automated autopilot landings (no player input).", config.COLOR_WARN_AMBER),
             ]
-            cy = py + 28
+            cy = py + 26
             for s_hdr, s_desc, s_col in star_rules:
                 self.screen.blit(self.font_small.render(s_hdr, True, s_col), (px, cy))
-                self.screen.blit(self.font_tiny.render(s_desc, True, (180, 198, 215)), (px + 14, cy + 18))
-                cy += 38
+                cy = self._draw_wrapped_text(s_desc, self.font_tiny, (180, 198, 215), px + 12, cy + 17, max_w - 12, line_height=15)
+                cy += 8
 
-            pygame.draw.line(self.screen, (28, 44, 64), (px, cy + 4), (px + c_rect.w - 44, cy + 4), 1)
+            pygame.draw.line(self.screen, (28, 44, 64), (px, cy + 6), (px + max_w, cy + 6), 1)
             pts_summary = "Touchdown: +100 PTS  |  Landing Streak Combo: +50 PTS  |  Timely Decision: +20 PTS  |  AI Rescue: -50 PTS"
-            self.screen.blit(self.font_tiny.render(pts_summary, True, config.COLOR_CYAN), (px, cy + 12))
+            self.screen.blit(self.font_tiny.render(pts_summary, True, config.COLOR_CYAN), (px, cy + 16))
 
         elif active_tab == "SAFETY":
             self.screen.blit(self.font_body_bold.render("AIRFIELD SAFETY RULES & FLIGHT RESTRICTIONS", True, (255, 215, 65)), (px, py))
@@ -1820,11 +1842,11 @@ class DisplayRenderer:
                 ("3. Runway Separation & Occupancy:", "Only one aircraft may land or rollout on a runway at a time. Routing a second flight to an active runway causes collision.", config.COLOR_WARN_AMBER),
                 ("4. Holding Fuel Exhaustion:", "Aircraft in holding orbits continuously consume fuel. If fuel drops to 0% before touching down, the aircraft will crash.", config.COLOR_WHITE),
             ]
-            cy = py + 28
+            cy = py + 26
             for r_hdr, r_desc, r_col in rules:
                 self.screen.blit(self.font_small.render(r_hdr, True, r_col), (px, cy))
-                self.screen.blit(self.font_tiny.render(r_desc, True, (180, 198, 215)), (px + 14, cy + 18))
-                cy += 44
+                cy = self._draw_wrapped_text(r_desc, self.font_tiny, (180, 198, 215), px + 12, cy + 17, max_w - 12, line_height=15)
+                cy += 8
 
     # =========================================================================
     # SCREEN 4: AI & DB STATS
