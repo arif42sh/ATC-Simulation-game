@@ -143,6 +143,7 @@ class DisplayRenderer:
         ai_ready: bool,
         extra_text: str = "",
         show_status_box: bool = True,
+        star_ratio: float = 0.0,
     ):
         pygame.draw.rect(self.screen, config.COLOR_TOPBAR_BG, (0, 0, config.WINDOW_WIDTH, config.TOP_BAR_HEIGHT))
         pygame.draw.line(self.screen, config.COLOR_TOPBAR_BORDER, (0, config.TOP_BAR_HEIGHT), (config.WINDOW_WIDTH, config.TOP_BAR_HEIGHT), 2)
@@ -154,9 +155,32 @@ class DisplayRenderer:
         s_surf = self.font_mono.render(f"{score_label}: {score_val:05d}", True, s_col)
         self.screen.blit(s_surf, (268, 16))
 
+        if not show_status_box:
+            # Live 3-Star Rating Progress Bar
+            bx = 445
+            by = 18
+            bw, bh = 180, 14
+            pygame.draw.rect(self.screen, (20, 36, 22), (bx, by, bw, bh), border_radius=4)
+            pygame.draw.rect(self.screen, (48, 86, 52), (bx, by, bw, bh), 1, border_radius=4)
+
+            fill_w = int(bw * max(0.0, min(1.0, star_ratio)))
+            if fill_w > 0:
+                pygame.draw.rect(self.screen, (245, 205, 55), (bx + 1, by + 1, fill_w - 2, bh - 2), border_radius=3)
+
+            # Star markers
+            s1 = "★" if star_ratio >= 0.35 else "☆"
+            s2 = "★" if star_ratio >= 0.70 else "☆"
+            s3 = "★" if star_ratio >= 0.95 else "☆"
+            col1 = (255, 225, 80) if star_ratio >= 0.35 else (120, 145, 120)
+            col2 = (255, 225, 80) if star_ratio >= 0.70 else (120, 145, 120)
+            col3 = (255, 225, 80) if star_ratio >= 0.95 else (120, 145, 120)
+
+            stars_surf = self.font_tiny.render(f"{s1} {s2} {s3}", True, (255, 225, 80))
+            self.screen.blit(stars_surf, (bx + bw + 10, by))
+
         if extra_text:
             e_surf = self.font_mono_sm.render(extra_text, True, config.COLOR_CYAN)
-            self.screen.blit(e_surf, (430, 18))
+            self.screen.blit(e_surf, (715, 18))
 
         if show_status_box:
             box = pygame.Rect(config.WINDOW_WIDTH - 235, 10, 215, 62)
@@ -615,7 +639,10 @@ class DisplayRenderer:
 
         # Top HUD Bar
         lvl_cfg = level_mgr.level_cfg
-        wind_txt = f"LVL {level_mgr.current_level:02d} ({lvl_cfg['difficulty']}) | WIND {int(airbase.wind_speed_kts)}KT | {airbase.weather}"
+        wind_txt = f"LVL {level_mgr.current_level:02d} ({lvl_cfg['difficulty']}) | WIND {int(airbase.wind_speed_kts)}KT"
+        tot_ac = lvl_cfg.get("total_aircraft", 10)
+        max_pot = max(100, tot_ac * 150)
+        s_ratio = min(1.0, max(0.0, agent.reward_system.cumulative_reward / max_pot))
         self._draw_top_hud_bar(
             landed_count=len(airbase.flight_history),
             score_label="SCORE",
@@ -624,6 +651,7 @@ class DisplayRenderer:
             ai_ready=True,
             extra_text=wind_txt,
             show_status_box=False,
+            star_ratio=s_ratio,
         )
 
         # Event Alert Toast Banner inside Left Canvas

@@ -242,7 +242,13 @@ class ATCAgent:
             self._refresh_plan_after_action()
         return executed_any
 
-    def override_assignment(self, flight_id: str, runway_id: Optional[str], decision_type: str = "OVERRIDE") -> tuple[bool, str]:
+    def override_assignment(
+        self,
+        flight_id: str,
+        runway_id: Optional[str],
+        decision_type: str = "OVERRIDE",
+        target_point: Optional[Tuple[float, float]] = None,
+    ) -> tuple[bool, str]:
         """
         Player manual override or Co-pilot clearance.
         Passes through the 9-rule PlanValidator before execution!
@@ -291,7 +297,7 @@ class ATCAgent:
                 self.db_logger.log_feedback(dec_id, flight_id, val_code, "REJECTED", reason)
             return False, reason
 
-        if self.airbase.authorize_landing(flight_id, runway_id):
+        if self.airbase.authorize_landing(flight_id, runway_id, target_point=target_point):
             ac.decision_maker = "CO_PILOT" if decision_type != "OVERRIDE" else "HUMAN_OVERRIDE"
             self.stats["player_overrides"] += 1
             self._record_landing_rewards(ac, runway_id, decision_type=decision_type, is_override=(decision_type == "OVERRIDE"))

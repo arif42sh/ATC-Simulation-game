@@ -197,40 +197,8 @@ class SkyATCGame:
                            bg_color=(52, 62, 82), hover_color=(76, 92, 118), font_size=12),
                 ])
 
-                # Sidebar HITL primary actions: 1-Click Clear Landing (Space) + Override
-                active_ctl = not self.is_paused
-                buttons.extend([
-                    Button(992, 586, 210, 48, "CLEAR LANDING [SPACE]", self._on_clear_landing_space,
-                           bg_color=(26, 148, 64), hover_color=(38, 185, 84), border_color=config.COLOR_PRIMARY_GREEN,
-                           font_size=12, enabled=active_ctl),
-                    Button(1208, 586, 135, 48, "OVERRIDE", self._toggle_override_mode,
-                           bg_color=(195, 96, 32) if self.override_mode else (155, 64, 32),
-                           hover_color=(225, 115, 42), border_color=config.COLOR_WARN_AMBER,
-                           font_size=12, enabled=active_ctl, selected=self.override_mode),
-                ])
-
-                # Quick manual runway override buttons (RWY 1..N + HOLD)
-                rwy_ids = list(self.airbase.runways.keys())
-                slot_count = len(rwy_ids) + 1
-                total_w = 351
-                gap = 6
-                bw = (total_w - gap * (slot_count - 1)) // slot_count
-                rx = 992
-                for idx, r_id in enumerate(rwy_ids):
-                    short_lbl = f"R{idx + 1}"
-                    buttons.append(Button(
-                        rx, 668, bw, 42, short_lbl,
-                        callback=(lambda rid=r_id: self._manual_assign_selected(rid)),
-                        bg_color=(28, 68, 108), hover_color=(42, 96, 152),
-                        border_color=config.COLOR_CYAN, font_size=13, enabled=active_ctl,
-                    ))
-                    rx += bw + gap
-                buttons.append(Button(
-                    rx, 668, bw, 42, "HOLD",
-                    callback=lambda: self._manual_assign_selected("HOLD"),
-                    bg_color=(96, 72, 26), hover_color=(135, 100, 38),
-                    border_color=config.COLOR_WARN_AMBER, font_size=12, enabled=active_ctl,
-                ))
+                # Fullscreen Simulation HUD: only top control buttons (Pause, Speed, SFX, Menu)
+                pass
 
         elif self.current_state == GameState.AI_STATS:
             buttons.extend([
@@ -546,9 +514,15 @@ class SkyATCGame:
                 self.log_scroll, self.export_toast, mysql_ok, ai_ready,
             )
 
+    def get_star_progress_ratio(self) -> float:
+        total_ac = self.level_mgr.level_cfg.get("total_aircraft", 10)
+        max_pot = max(100, total_ac * 150)
+        score = max(0, self.agent.reward_system.cumulative_reward)
+        return min(1.0, score / max_pot)
+
     def _find_hovered_runway(self, mx: int, my: int) -> Optional[str]:
         for r_id, rwy in self.airbase.runways.items():
-            if rwy.distance_to_point(mx, my) <= 30.0:
+            if rwy.distance_to_point(mx, my) <= 38.0:
                 return r_id
         return None
 
@@ -610,7 +584,7 @@ class SkyATCGame:
                         continue
 
                     # 3. Click-Plane-Then-Click-Runway support on radar canvas
-                    if mx < config.SIDEBAR_X and self.selected_aircraft and self.selected_aircraft.status == FlightStatus.HOLDING:
+                    if self.selected_aircraft and self.selected_aircraft.status == FlightStatus.HOLDING:
                         r_id = self._find_hovered_runway(mx, my)
                         if r_id:
                             sel_ac = self.selected_aircraft
@@ -619,7 +593,7 @@ class SkyATCGame:
                                 self.sound.play("warning")
                                 self.renderer.add_floating_text(guard_msg, sel_ac.x, sel_ac.y - 24, config.COLOR_CRITICAL_RED)
                             else:
-                                ok, msg = self.agent.override_assignment(sel_ac.flight_id, r_id)
+                                ok, msg = self.agent.override_assignment(sel_ac.flight_id, r_id, target_point=(mx, my))
                                 if ok:
                                     self.sound.play("click")
                                     self.selected_aircraft = None
@@ -670,7 +644,7 @@ class SkyATCGame:
                             self.sound.play("warning")
                             self.renderer.add_floating_text(guard_msg, ac.x, ac.y - 24, config.COLOR_CRITICAL_RED)
                         else:
-                            ok, msg = self.agent.override_assignment(ac.flight_id, r_id)
+                            ok, msg = self.agent.override_assignment(ac.flight_id, r_id, target_point=(mx, my))
                             if ok:
                                 self.sound.play("click")
                                 self.selected_aircraft = None
