@@ -172,9 +172,16 @@ class Airbase:
             elif shortest_rwy.status == RunwayStatus.UNAVAILABLE and "Weather" in shortest_rwy.status_reason:
                 shortest_rwy.release()
 
-    def authorize_landing(self, flight_id: str, runway_id: str, force_unsafe: bool = False) -> bool:
+    def authorize_landing(
+        self,
+        flight_id: str,
+        runway_id: str,
+        force_unsafe: bool = False,
+        target_point: Optional[Tuple[float, float]] = None,
+    ) -> bool:
         """
         Clears aircraft to intercept and land on the specified runway.
+        If target_point is provided, determines optimal bidirectional threshold.
         If force_unsafe=True (e.g., manual override test), allows collision detection to catch conflicts.
         """
         aircraft = self.get_aircraft(flight_id)
@@ -185,14 +192,28 @@ class Airbase:
         if not force_unsafe and not runway.is_available():
             return False
 
+        if target_point is not None:
+            thresh = runway.get_closest_threshold(target_point[0], target_point[1])
+            app_pos = thresh["approach_pos"]
+            start_pos = thresh["start"]
+            end_pos = thresh["end"]
+            ux, uy = thresh["ux"], thresh["uy"]
+            angle_deg = thresh["angle_deg"]
+        else:
+            app_pos = (runway.approach_x, runway.approach_y)
+            start_pos = (runway.start_x, runway.start_y)
+            end_pos = (runway.end_x, runway.end_y)
+            ux, uy = runway.ux, runway.uy
+            angle_deg = runway.screen_angle_deg
+
         aircraft.assign_runway_geometry(
             runway_id=runway_id,
-            approach_pos=(runway.approach_x, runway.approach_y),
-            start_pos=(runway.start_x, runway.start_y),
-            end_pos=(runway.end_x, runway.end_y),
-            ux=runway.ux,
-            uy=runway.uy,
-            angle_deg=runway.screen_angle_deg,
+            approach_pos=app_pos,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            ux=ux,
+            uy=uy,
+            angle_deg=angle_deg,
         )
 
         if runway.is_available():

@@ -63,6 +63,37 @@ class Runway:
         """Checks whether this runway is long enough for the aircraft size."""
         return self.length_m >= min_runway_length_m
 
+    def get_closest_threshold(self, px: float, py: float) -> Dict[str, Any]:
+        """
+        Determines the optimal landing direction based on proximity to runway thresholds.
+        Supports bidirectional landing (Start -> End or End -> Start).
+        """
+        dist_start = math.hypot(px - self.start_x, py - self.start_y)
+        dist_end = math.hypot(px - self.end_x, py - self.end_y)
+
+        if dist_start <= dist_end:
+            return {
+                "direction": "START_TO_END",
+                "approach_pos": (self.approach_x, self.approach_y),
+                "start": (self.start_x, self.start_y),
+                "end": (self.end_x, self.end_y),
+                "ux": self.ux,
+                "uy": self.uy,
+                "angle_deg": self.screen_angle_deg,
+            }
+        else:
+            opp_app_x = self.end_x + self.ux * 85.0
+            opp_app_y = self.end_y + self.uy * 85.0
+            return {
+                "direction": "END_TO_START",
+                "approach_pos": (opp_app_x, opp_app_y),
+                "start": (self.end_x, self.end_y),
+                "end": (self.start_x, self.start_y),
+                "ux": -self.ux,
+                "uy": -self.uy,
+                "angle_deg": (self.screen_angle_deg + 180.0) % 360.0,
+            }
+
     def reserve(self, flight_id: str, duration_seconds: float = 0.0) -> bool:
         """
         Marks runway Occupied for an incoming landing clearance.
