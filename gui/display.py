@@ -284,43 +284,43 @@ class DisplayRenderer:
         """Draws realistic airport landscape: water reservoirs, perimeter roads, and tree clusters (matching Image 1 & 2)."""
         # 1. West Water Retention Canal / Pond (as seen in Image 1)
         w_pond_shore = [
-            (200, 260), (250, 245), (290, 270), (300, 340), (280, 410),
-            (240, 430), (190, 390), (180, 320)
+            (130, 270), (190, 250), (250, 275), (265, 345), (245, 425),
+            (195, 455), (135, 420), (115, 340),
         ]
         pygame.draw.polygon(self.screen, (182, 168, 134), w_pond_shore)
         w_pond_water = [
-            (204, 264), (248, 250), (285, 274), (294, 338), (275, 404),
-            (238, 424), (194, 386), (185, 322)
+            (135, 274), (188, 255), (245, 280), (258, 343), (240, 419),
+            (193, 449), (139, 416), (120, 342),
         ]
         pygame.draw.polygon(self.screen, (55, 145, 195), w_pond_water)
         w_pond_deep = [
-            (214, 276), (244, 264), (272, 285), (280, 332), (264, 388),
-            (232, 408), (204, 376), (198, 328)
+            (145, 286), (184, 269), (232, 291), (244, 337), (229, 403),
+            (187, 433), (149, 406), (133, 348),
         ]
         pygame.draw.polygon(self.screen, (34, 100, 155), w_pond_deep)
 
         # 2. Southeast Retention Basin (as seen in Image 1)
         se_pond_shore = [
-            (970, 530), (1040, 520), (1090, 550), (1110, 610), (1070, 660),
-            (1000, 670), (950, 620), (940, 570)
+            (1000, 520), (1070, 510), (1120, 540), (1140, 600), (1100, 650),
+            (1030, 660), (980, 610), (970, 560),
         ]
         pygame.draw.polygon(self.screen, (182, 168, 134), se_pond_shore)
         se_pond_water = [
-            (975, 535), (1038, 525), (1084, 554), (1103, 608), (1065, 654),
-            (1002, 663), (956, 616), (946, 573)
+            (1005, 525), (1068, 515), (1114, 544), (1133, 598), (1095, 644),
+            (1032, 653), (986, 606), (976, 563),
         ]
         pygame.draw.polygon(self.screen, (55, 145, 195), se_pond_water)
         se_pond_deep = [
-            (986, 546), (1032, 538), (1070, 562), (1086, 604), (1052, 642),
-            (1006, 650), (968, 610), (960, 578)
+            (1016, 536), (1062, 528), (1100, 552), (1116, 594), (1082, 632),
+            (1036, 640), (998, 600), (990, 568),
         ]
         pygame.draw.polygon(self.screen, (34, 100, 155), se_pond_deep)
 
         # 3. Airport Perimeter Service Access Road (as seen in Image 1)
-        road_x = 1140
+        road_x = 1180
         pygame.draw.rect(self.screen, (42, 46, 54), (road_x - 7, 54, 14, 690))
         pygame.draw.rect(self.screen, (30, 34, 40), (road_x - 7, 54, 14, 690), 1)
-        pygame.draw.rect(self.screen, (42, 46, 54), (860, 135, 280, 12))
+        pygame.draw.rect(self.screen, (42, 46, 54), (940, 120, 240, 12))
         ry = 60
         while ry < 740:
             pygame.draw.line(self.screen, (225, 185, 45), (road_x, ry), (road_x, ry + 12), 1)
@@ -328,10 +328,10 @@ class DisplayRenderer:
 
         # 4. Perimeter Tree Clusters (as seen in Image 1 & 2)
         tree_spots = [
-            (175, 230, 13), (195, 215, 11), (305, 240, 14), (320, 260, 12),
-            (170, 430, 13), (190, 450, 12), (290, 445, 14), (310, 465, 12),
-            (940, 505, 13), (960, 485, 11), (1115, 525, 14), (1090, 675, 13),
-            (1162, 175, 14), (1162, 255, 13), (1162, 335, 15), (1162, 415, 13), (1162, 495, 14),
+            (115, 230, 13), (145, 215, 11), (275, 240, 14), (290, 260, 12),
+            (110, 440, 13), (135, 465, 12), (250, 455, 14), (275, 475, 12),
+            (970, 495, 13), (990, 475, 11), (1145, 515, 14), (1120, 665, 13),
+            (1202, 175, 14), (1202, 255, 13), (1202, 335, 15), (1202, 415, 13), (1202, 495, 14),
         ]
         for tx, ty, tr in tree_spots:
             pygame.draw.circle(self.screen, (20, 34, 24), (tx + 3, ty + 4), tr)
@@ -340,53 +340,100 @@ class DisplayRenderer:
             pygame.draw.circle(self.screen, (60, 165, 86), (tx - 4, ty - 4), int(tr * 0.38))
 
     def _draw_taxiway_network(self, airbase: Airbase):
-        """Draws realistic high-speed exit taxiways and taxiway centerlines (matching Image 3 & 2)."""
-        rwy1 = airbase.runways.get("RWY 1")
-        if not rwy1:
+        """Draws a complete, interconnected commercial taxiway network matching Image 3."""
+        if not airbase.runways:
             return
 
-        # Parallel Taxiway Alpha running above RWY 1
-        tax_y = int(rwy1.start_y - 42)
-        tax_x1 = int(rwy1.start_x - 15)
-        tax_x2 = int(rwy1.end_x + 15)
+        sorted_rwys = sorted(airbase.runways.values(), key=lambda r: r.start_y)
+        rwy_top = sorted_rwys[0]
+        rwy_bot = sorted_rwys[-1]
+
         tax_w = 14
+        tax_alpha_y = int(rwy_top.start_y - 42)
+        west_loop_x = 350
+        east_loop_x = 920
+        bot_tax_y = int(rwy_bot.start_y + 40)
+        cx = int(rwy_top.center_x)
 
-        # Asphalt base & sand shoulder
-        pygame.draw.rect(self.screen, (178, 164, 130), (tax_x1 - 3, tax_y - tax_w // 2 - 3, tax_x2 - tax_x1 + 6, tax_w + 6), border_radius=3)
-        pygame.draw.rect(self.screen, (38, 42, 50), (tax_x1, tax_y - tax_w // 2, tax_x2 - tax_x1, tax_w), border_radius=2)
-        # Yellow centerline
-        pygame.draw.line(self.screen, (235, 185, 45), (tax_x1 + 8, tax_y), (tax_x2 - 8, tax_y), 2)
+        def draw_seg(p1, p2):
+            pygame.draw.line(self.screen, (178, 164, 130), p1, p2, tax_w + 6)
+            pygame.draw.line(self.screen, (38, 42, 50), p1, p2, tax_w)
+            pygame.draw.line(self.screen, (235, 185, 45), p1, p2, 2)
 
-        # High-Speed Exit Taxiways (30-degree angled turnoffs, as in Image 3)
-        exits = [
-            (rwy1.start_x + 90, rwy1.start_y, rwy1.start_x + 45, tax_y),      # West exit
-            (rwy1.center_x, rwy1.start_y, rwy1.center_x, tax_y),             # Midfield exit
-            (rwy1.end_x - 90, rwy1.start_y, rwy1.end_x - 45, tax_y),         # East exit
-        ]
-        for ex1, ey1, ex2, ey2 in exits:
-            pygame.draw.line(self.screen, (178, 164, 130), (ex1, ey1), (ex2, ey2), tax_w + 6)
-            pygame.draw.line(self.screen, (38, 42, 50), (ex1, ey1), (ex2, ey2), tax_w)
-            pygame.draw.line(self.screen, (235, 185, 45), (ex1, ey1), (ex2, ey2), 2)
-            # Runway holding point bar (yellow double bar at entrance)
-            hx = int(ex1 * 0.4 + ex2 * 0.6)
-            hy = int(ey1 * 0.4 + ey2 * 0.6)
-            pygame.draw.line(self.screen, (245, 200, 50), (hx - 6, hy - 2), (hx + 6, hy - 2), 2)
-            pygame.draw.line(self.screen, (245, 200, 50), (hx - 6, hy + 2), (hx + 6, hy + 2), 2)
+        def draw_holding_bar(x, y, is_vertical=True):
+            if is_vertical:
+                pygame.draw.line(self.screen, (245, 200, 50), (x - 2, y - 6), (x - 2, y + 6), 2)
+                pygame.draw.line(self.screen, (245, 200, 50), (x + 2, y - 6), (x + 2, y + 6), 2)
+            else:
+                pygame.draw.line(self.screen, (245, 200, 50), (x - 6, y - 2), (x + 6, y - 2), 2)
+                pygame.draw.line(self.screen, (245, 200, 50), (x - 6, y + 2), (x + 6, y + 2), 2)
 
-        # If 3 or 4 runways, add high-speed crossover link between RWY 1 and RWY 2
-        rwy2 = airbase.runways.get("RWY 2")
-        if rwy2 and abs(rwy2.heading - 90) < 5:  # Horizontal parallel runway
-            cx = int(rwy1.center_x)
-            pygame.draw.line(self.screen, (178, 164, 130), (cx, rwy1.start_y), (cx, rwy2.start_y), tax_w + 6)
-            pygame.draw.line(self.screen, (38, 42, 50), (cx, rwy1.start_y), (cx, rwy2.start_y), tax_w)
-            pygame.draw.line(self.screen, (235, 185, 45), (cx, rwy1.start_y), (cx, rwy2.start_y), 2)
+        # 1. Parallel Taxiway Alpha (North of RWY 1)
+        draw_seg((west_loop_x, tax_alpha_y), (east_loop_x, tax_alpha_y))
+
+        # 2. Parallel Taxiway Omega (South of Lowest Runway)
+        draw_seg((west_loop_x, bot_tax_y), (east_loop_x, bot_tax_y))
+
+        # 3. West End-Around Loop Taxiway (Full vertical link connecting all runways)
+        draw_seg((west_loop_x, tax_alpha_y), (west_loop_x, bot_tax_y))
+
+        # 4. East End-Around Loop Taxiway (Full vertical link connecting all runways)
+        draw_seg((east_loop_x, tax_alpha_y), (east_loop_x, bot_tax_y))
+
+        # 5. Connect every runway's threshold to West Loop and East Loop
+        for r in sorted_rwys:
+            # West threshold connection
+            draw_seg((west_loop_x, int(r.start_y)), (int(r.start_x), int(r.start_y)))
+            draw_holding_bar(int(r.start_x - 14), int(r.start_y), is_vertical=True)
+            # East threshold connection
+            draw_seg((int(r.end_x), int(r.end_y)), (east_loop_x, int(r.end_y)))
+            draw_holding_bar(int(r.end_x + 14), int(r.end_y), is_vertical=True)
+
+        # 6. Inter-runway intermediate parallel taxiways & high-speed angled turnouts (RETs)
+        for i in range(len(sorted_rwys) - 1):
+            r_upper = sorted_rwys[i]
+            r_lower = sorted_rwys[i + 1]
+            mid_y = int((r_upper.start_y + r_lower.start_y) / 2)
+
+            # Midfield parallel taxiway between these two runways
+            draw_seg((west_loop_x, mid_y), (east_loop_x, mid_y))
+
+            # 30° / 45° angled high-speed rapid exit turnouts (RETs)
+            # Upper runway exits down to mid_y:
+            draw_seg((int(r_upper.start_x + 90), int(r_upper.start_y)), (int(r_upper.start_x + 35), mid_y))
+            draw_seg((int(r_upper.end_x - 90), int(r_upper.start_y)), (int(r_upper.end_x - 35), mid_y))
+            draw_holding_bar(int(r_upper.start_x + 65), int(r_upper.start_y * 0.6 + mid_y * 0.4), is_vertical=False)
+            draw_holding_bar(int(r_upper.end_x - 65), int(r_upper.start_y * 0.6 + mid_y * 0.4), is_vertical=False)
+
+            # Lower runway exits up to mid_y:
+            draw_seg((int(r_lower.start_x + 90), int(r_lower.start_y)), (int(r_lower.start_x + 35), mid_y))
+            draw_seg((int(r_lower.end_x - 90), int(r_lower.start_y)), (int(r_lower.end_x - 35), mid_y))
+            draw_holding_bar(int(r_lower.start_x + 65), int(r_lower.start_y * 0.6 + mid_y * 0.4), is_vertical=False)
+            draw_holding_bar(int(r_lower.end_x - 65), int(r_lower.start_y * 0.6 + mid_y * 0.4), is_vertical=False)
+
+            # Diagonal cross-runway links (as prominently featured in Image 3!)
+            draw_seg((int(r_upper.center_x - 70), int(r_upper.start_y)), (int(r_upper.center_x + 70), mid_y))
+            draw_seg((int(r_lower.center_x - 70), int(r_lower.start_y)), (int(r_lower.center_x + 70), mid_y))
+
+        # 7. High-speed exits from RWY 1 up to Taxiway Alpha
+        draw_seg((int(rwy_top.start_x + 90), int(rwy_top.start_y)), (int(rwy_top.start_x + 35), tax_alpha_y))
+        draw_seg((int(rwy_top.end_x - 90), int(rwy_top.start_y)), (int(rwy_top.end_x - 35), tax_alpha_y))
+        draw_holding_bar(int(rwy_top.start_x + 65), int(rwy_top.start_y * 0.6 + tax_alpha_y * 0.4), is_vertical=False)
+        draw_holding_bar(int(rwy_top.end_x - 65), int(rwy_top.start_y * 0.6 + tax_alpha_y * 0.4), is_vertical=False)
+
+        # 8. High-speed exits from Lowest Runway down to Taxiway Omega
+        draw_seg((int(rwy_bot.start_x + 90), int(rwy_bot.start_y)), (int(rwy_bot.start_x + 35), bot_tax_y))
+        draw_seg((int(rwy_bot.end_x - 90), int(rwy_bot.start_y)), (int(rwy_bot.end_x - 35), bot_tax_y))
+
+        # 9. Midfield Central Spine Taxiway (Connects all parallel taxiways vertically)
+        draw_seg((cx, tax_alpha_y), (cx, bot_tax_y))
 
     def _draw_terminal_complex(self, airbase: Airbase):
         """Draws passenger terminal building, boarding jet bridges, and docked airliners (matching Image 1 & 3)."""
-        tx, ty, tw, th = 485, 114, 380, 48
+        tx, ty, tw, th = 445, 96, 460, 44
 
         # Concrete Apron Pad for gates
-        apron_rect = pygame.Rect(tx - 35, ty + th - 6, tw + 70, 72)
+        apron_rect = pygame.Rect(tx - 30, ty + th - 6, tw + 60, 52)
         pygame.draw.rect(self.screen, (178, 164, 130), (apron_rect.x - 3, apron_rect.y - 3, apron_rect.w + 6, apron_rect.h + 6), border_radius=4)
         pygame.draw.rect(self.screen, (76, 84, 96), apron_rect, border_radius=3)
         pygame.draw.rect(self.screen, (60, 68, 78), apron_rect, 1, border_radius=3)
@@ -397,8 +444,8 @@ class DisplayRenderer:
         pygame.draw.rect(self.screen, (68, 88, 108), (tx, ty, tw, th), 2, border_radius=8)
 
         # Glass Skylights / Solar Panel grid (as in Image 3)
-        for sx in range(tx + 24, tx + tw - 24, 48):
-            panel = pygame.Rect(sx, ty + 10, 36, 28)
+        for sx in range(tx + 20, tx + tw - 24, 42):
+            panel = pygame.Rect(sx, ty + 8, 34, 26)
             pygame.draw.rect(self.screen, (32, 65, 96), panel, border_radius=3)
             pygame.draw.rect(self.screen, (72, 128, 175), panel, 1, border_radius=3)
             pygame.draw.line(self.screen, (72, 128, 175), (panel.centerx, panel.y), (panel.centerx, panel.bottom), 1)
@@ -407,33 +454,40 @@ class DisplayRenderer:
         term_txt = self.font_tiny.render("TERMINAL 1 • PASSENGER CONCOURSE", True, (225, 238, 250))
         self.screen.blit(term_txt, (tx + (tw - term_txt.get_width()) // 2, ty + 2))
 
-        # 4 Passenger Boarding Gates & Jet Bridges (Jetways)
+        # 5 Passenger Boarding Gates & Jet Bridges (Jetways, exactly as in Image 3)
         gates = [
-            (tx + 55, "G1"),
-            (tx + 145, "G2"),
-            (tx + 235, "G3"),
-            (tx + 325, "G4"),
+            (tx + 45, "G1"),
+            (tx + 130, "G2"),
+            (tx + 215, "G3"),
+            (tx + 300, "G4"),
+            (tx + 385, "G5"),
         ]
+        rwy1 = airbase.runways.get("RWY 1")
+        tax_alpha_y = int(rwy1.start_y - 42) if rwy1 else 178
+
         for gx, g_name in gates:
             # Jet bridge fixed rotunda
-            pygame.draw.circle(self.screen, (195, 202, 212), (gx, ty + th), 6)
+            pygame.draw.circle(self.screen, (195, 202, 212), (gx, ty + th), 5)
             # Telescopic corridor extending to aircraft door
-            pygame.draw.line(self.screen, (215, 220, 228), (gx, ty + th), (gx + 6, ty + th + 18), 5)
-            pygame.draw.line(self.screen, (50, 56, 66), (gx, ty + th), (gx + 6, ty + th + 18), 1)
+            pygame.draw.line(self.screen, (215, 220, 228), (gx, ty + th), (gx + 5, ty + th + 14), 4)
+            pygame.draw.line(self.screen, (50, 56, 66), (gx, ty + th), (gx + 5, ty + th + 14), 1)
             # Accordion bellows cab head
-            pygame.draw.rect(self.screen, (54, 60, 70), (gx + 3, ty + th + 16, 7, 6), border_radius=1)
+            pygame.draw.rect(self.screen, (54, 60, 70), (gx + 2, ty + th + 12, 6, 5), border_radius=1)
 
             # Aircraft parking box & stand label
-            stand_box = pygame.Rect(gx - 26, ty + th + 12, 52, 48)
-            pygame.draw.rect(self.screen, (190, 165, 45), stand_box, 1, border_radius=3)
-            pygame.draw.line(self.screen, (235, 185, 45), (gx, ty + th + 12), (gx, ty + th + 40), 2)
-            pygame.draw.line(self.screen, (235, 185, 45), (gx - 10, ty + th + 32), (gx + 10, ty + th + 32), 2)
+            stand_box = pygame.Rect(gx - 22, ty + th + 8, 44, 40)
+            pygame.draw.rect(self.screen, (190, 165, 45), stand_box, 1, border_radius=2)
+            pygame.draw.line(self.screen, (235, 185, 45), (gx, ty + th + 8), (gx, ty + th + 32), 2)
+            pygame.draw.line(self.screen, (235, 185, 45), (gx - 8, ty + th + 26), (gx + 8, ty + th + 26), 2)
+
+            # Yellow lead-out guide line connecting gate to Taxiway Alpha!
+            pygame.draw.line(self.screen, (235, 185, 45), (gx, ty + th + 32), (gx, tax_alpha_y), 2)
 
             lbl = self.font_tiny.render(g_name, True, (235, 205, 75))
-            self.screen.blit(lbl, (gx - lbl.get_width() // 2, ty + th + 46))
+            self.screen.blit(lbl, (gx - lbl.get_width() // 2, ty + th + 36))
 
             # Docked Airliner parked at gate (facing South, 180 degrees)
-            self._draw_plane_sprite(gx, ty + th + 28, heading_deg=180.0, color=(240, 246, 252), scale=0.82)
+            self._draw_plane_sprite(gx, ty + th + 22, heading_deg=180.0, color=(240, 246, 252), scale=0.74)
 
     def _draw_control_tower(self, cx: float, cy: float):
         """Draws authentic airport observation control tower with radar dome (matching Image 2)."""
@@ -459,39 +513,40 @@ class DisplayRenderer:
         # 1. Natural airfield landscape (water reservoirs, access road, perimeter trees)
         self._draw_airfield_scenery(airbase)
 
-        # 2. Main concrete airbase apron
-        rwy_count = len(airbase.runways)
-        if rwy_count >= 4:
-            base_pts = [
-                (170, 185), (675, 185), (700, 220), (690, 345),
-                (655, 380), (645, 505), (615, 525), (385, 660),
-                (335, 660), (235, 600), (175, 520), (155, 450), (155, 240),
-            ]
-        elif rwy_count == 3:
-            base_pts = [
-                (170, 200), (675, 200), (700, 235), (690, 375),
-                (665, 410), (615, 440), (345, 615), (245, 615),
-                (175, 545), (155, 475), (155, 260),
-            ]
-        else:
-            base_pts = [
-                (175, 195), (655, 195), (680, 225), (680, 420),
-                (375, 600), (205, 580), (175, 490),
-            ]
+        if not airbase.runways:
+            return
 
-        tarmac_pts = [(x + 200, y) for x, y in base_pts]
-        pygame.draw.polygon(self.screen, (178, 164, 130), [(x + 4, y + 5) for x, y in tarmac_pts])
+        # 2. Main concrete airbase apron encompassing all runways & taxiways
+        min_rwy_y = min(r.start_y for r in airbase.runways.values())
+        max_rwy_y = max(r.start_y for r in airbase.runways.values())
+        top_y = min_rwy_y - 128  # encompasses terminal concourse & apron
+        bot_y = max_rwy_y + 65   # encompasses south perimeter taxiway
+
+        tarmac_pts = [
+            (420, top_y - 12),
+            (880, top_y - 12),
+            (960, top_y + 40),
+            (960, bot_y - 25),
+            (925, bot_y + 12),
+            (365, bot_y + 12),
+            (310, bot_y - 25),
+            (310, top_y + 40),
+        ]
+        # Sand safety perimeter
+        pygame.draw.polygon(self.screen, (184, 170, 134), [(x, y + 4) for x, y in tarmac_pts])
+        pygame.draw.polygon(self.screen, (184, 170, 134), tarmac_pts)
+        # Main asphalt apron
         pygame.draw.polygon(self.screen, (74, 82, 94), tarmac_pts)
         pygame.draw.polygon(self.screen, (58, 66, 76), tarmac_pts, 2)
 
-        # 3. High-Speed Exit Taxiway Network
+        # 3. Complete High-Speed Exit Taxiway Network
         self._draw_taxiway_network(airbase)
 
         # 4. Modern Passenger Terminal Complex with Jetways & Docked Airliners
         self._draw_terminal_complex(airbase)
 
-        # 5. Air Traffic Control Tower
-        self._draw_control_tower(395, 205)
+        # 5. Air Traffic Control Tower (West side of airfield)
+        self._draw_control_tower(310, 240)
 
         # 6. Draw each runway cleanly along its angle with shoulders, skid marks & markings
         for rwy in airbase.runways.values():
