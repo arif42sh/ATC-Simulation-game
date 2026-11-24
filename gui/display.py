@@ -13,7 +13,7 @@ import pygame
 import config
 from config import RunwayStatus
 from environment.airbase import Airbase
-from environment.aircraft import Aircraft, FlightStatus
+from environment.aircraft import Aircraft, FlightStatus, EmergencyType
 from environment.levels import LevelManager
 from agent.agent import ATCAgent
 
@@ -642,8 +642,9 @@ class DisplayRenderer:
         self.screen.blit(ctrl_prefix, (ctrl_rect.x + 12, ctrl_rect.y + 4))
         self.screen.blit(ctrl_body, (ctrl_rect.x + 84, ctrl_rect.y + 4))
 
-        # Right Sidebar (SKYATC AI Panel)
-        self._render_gameplay_sidebar(airbase, agent, level_mgr, selected_ac, override_mode)
+        # Radio Comms Alert
+        if not drag_state and hasattr(agent, "get_co_pilot_target"):
+            self._draw_radio_comms_bubble(agent.get_co_pilot_target())
 
         # Optional Modal Overlay (Pause / Level Complete / Crash)
         if modal_state:
@@ -659,21 +660,82 @@ class DisplayRenderer:
         else:
             return (240, 50, 50)
 
-    def _draw_co_pilot_guide(self, co_pilot_target: Optional[Tuple[Any, Any]]):
+    def _get_emergency_symbol(self, ac: Aircraft) -> Optional[str]:
+        if ac.fuel_level <= config.FUEL_CRITICAL_THRESHOLD or ac.emergency_type == EmergencyType.CRITICAL_FUEL:
+            return "FUEL"
+        if ac.emergency_type == EmergencyType.ENGINE_PROBLEM:
+            return "ENGINE"
+        if ac.emergency_type == EmergencyType.MEDICAL:
+            return "MEDICAL"
+        if ac.emergency_type == EmergencyType.BIRD_STRIKE:
+            return "BIRD_STRIKE"
+        if ac.is_emergency():
+            return "EMERGENCY"
+        return None
+
+    def _draw_ai_spotlight(self, co_pilot_target: Optional[Tuple[Any, Any]]):
         if not co_pilot_target:
             return
         ac, rwy = co_pilot_target
         if ac.status != FlightStatus.HOLDING:
             return
-        pulse = 0.5 + 0.5 * math.sin(self.pulse_phase * 2.0)
+
+        pulse = 0.5 + 0.5 * math.sin(self.pulse_phase * 2.5)
+
+        # 1. Golden beacon around priority aircraft
+        gold_col = (255, 215, 65)
+        beacon_r = int(24 + 6 * pulse)
+        pygame.draw.circle(self.screen, gold_col, (int(ac.x), int(ac.y)), beacon_r, 2)
+        pygame.draw.circle(self.screen, (255, 235, 120), (int(ac.x), int(ac.y)), beacon_r + 4, 1)
+
+        # 2. Glowing animated dotted glide path to the runway approach threshold
         guide_col = (
-            min(255, int(46 + 40 * pulse)),
-            min(255, int(224 + 31 * pulse)),
-            255,
+            min(255, int(50 + 205 * pulse)),
+            min(255, int(220 + 35 * pulse)),
+            min(255, int(120 + 135 * pulse)),
         )
         target_pos = (rwy.approach_x, rwy.approach_y)
         self._draw_dotted_line((ac.x, ac.y), target_pos, guide_col, spacing=10, radius=2)
-        pygame.draw.circle(self.screen, guide_col, (int(rwy.approach_x), int(rwy.approach_y)), int(12 + 4 * pulse), 2)
+
+        # 3. Soft glowing landing bracket on the runway entrance
+        pygame.draw.circle(self.screen, guide_col, (int(rwy.approach_x), int(rwy.approach_y)), int(14 + 4 * pulse), 2)
+        pill = self.font_tiny.render(f"CLEAR -> {rwy.id} [SPACE]", True, config.COLOR_WHITE)
+        pw, ph = pill.get_width() + 10, 18
+        px, py = int(rwy.approach_x - pw // 2), int(rwy.approach_y - 28)
+        pygame.draw.rect(self.screen, (14, 24, 38), (px, py, pw, ph), border_radius=4)
+        pygame.draw.rect(self.screen, guide_col, (px, py, pw, ph), 1, border_radius=4)
+        self.screen.blit(pill, (px + 5, py + 2))
+
+    def _draw_radio_comms_bubble(self, co_pilot_target: Optional[Tuple[Any, Any]]):
+        if not co_pilot_target:
+            return
+        ac, rwy = co_pilot_target
+        if ac.status != FlightStatus.HOLDING:
+            return
+
+        is_em = ac.is_emergency()
+        bw, bh = 580, 32
+        bx = (config.WINDOW_WIDTH - bw) // 2
+        by = 56
+
+        bg_col = (64, 18, 24, 220) if is_em else (18, 32, 50, 220)
+        border_col = config.COLOR_CRITICAL_RED if is_em else (255, 215, 65)
+
+        comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        comm_surf.fill(bg_col)
+        self.screen.blit(comm_surf, (bx, by))
+        pygame.draw.rect(self.screen, border_col, (bx, by, bw, bh), 1, border_radius=6)
+
+        if is_em:
+            msg = f"MAYDAY! {ac.flight_id} ({int(ac.fuel_level)}% FUEL): Requesting {rwy.id}!  [SPACE to Land]"
+        else:
+            msg = f"TOWER COMM: {ac.flight_id} ({ac.model}) queued for {rwy.id}  [SPACE to Land]"
+
+        lbl = self.font_tiny.render(msg, True, config.COLOR_WHITE)
+        self.screen.blit(lbl, (bx + 16, by + 8))
+
+    def _draw_co_pilot_guide(self, co_pilot_target: Optional[Tuple[Any, Any]]):
+        self._draw_ai_spotlight(co_pilot_target)
 
     def _draw_gameplay_aircraft(self, ac: Aircraft, is_selected: bool):
         ax, ay = int(ac.x), int(ac.y)
@@ -712,8 +774,9 @@ class DisplayRenderer:
         self._draw_plane_sprite(ac.x, ac.y, ac.heading, plane_col, scale=scale)
 
         # Minimal sleek callsign tag (hides noisy telemetry by default)
+        sym = self._get_emergency_symbol(ac)
         if is_em:
-            tag_txt = f"{ac.flight_id} {int(ac.fuel_level)}%"
+            tag_txt = f"{ac.flight_id} [{sym or 'ALERT'} {int(ac.fuel_level)}%]"
             tag_col = (255, 115, 115)
         elif is_selected:
             tag_txt = f"{ac.flight_id} {int(ac.fuel_level)}% {ac.model}"
