@@ -397,32 +397,30 @@ class DisplayRenderer:
         if rwy.status == RunwayStatus.AVAILABLE:
             if compat_state is False:
                 st_col = config.COLOR_WARN_AMBER
-                st_txt = f"{rwy.id} ({rwy.length_m}m) TOO SHORT"
+                st_txt = f"{rwy.id} • TOO SHORT"
             else:
-                st_col = config.COLOR_PRIMARY_GREEN
-                st_txt = f"{rwy.id} ({rwy.length_m}m) FREE"
+                st_col = (130, 215, 160)
+                st_txt = f"{rwy.id} • {rwy.length_m}m"
         elif rwy.status == RunwayStatus.OCCUPIED:
-            st_col = config.COLOR_CRITICAL_RED
-            st_txt = f"{rwy.id} OCCUPIED [{rwy.current_aircraft}]"
+            st_col = (255, 120, 120)
+            st_txt = f"{rwy.id} • BUSY [{rwy.current_aircraft}]"
         else:
             st_col = config.COLOR_WARN_AMBER
-            st_txt = f"{rwy.id} {rwy.status.upper()}"
+            st_txt = f"{rwy.id} • CLOSED"
 
         lbl = self.font_tiny.render(st_txt, True, st_col)
-        pill_w, pill_h = lbl.get_width() + 12, 18
-        # Perpendicular normal offset to place status pill cleanly outside the runway strip
-        # so it never collides with rolling planes or floating texts
+        pill_w, pill_h = lbl.get_width() + 10, 16
         nx, ny = -rwy.uy, rwy.ux
         if ny > 0:
             nx, ny = -nx, -ny
-        cx = rwy.center_x + nx * 28.0
-        cy = rwy.center_y + ny * 28.0
+        cx = rwy.center_x + nx * 24.0
+        cy = rwy.center_y + ny * 24.0
         bx = int(cx - pill_w // 2)
         by = int(cy - pill_h // 2)
         pill = pygame.Rect(bx, by, pill_w, pill_h)
-        pygame.draw.rect(self.screen, (14, 24, 38), pill, border_radius=4)
-        pygame.draw.rect(self.screen, st_col, pill, 1, border_radius=4)
-        self.screen.blit(lbl, (bx + 6, by + 2))
+        pygame.draw.rect(self.screen, (16, 24, 34), pill, border_radius=3)
+        pygame.draw.rect(self.screen, (42, 64, 82), pill, 1, border_radius=3)
+        self.screen.blit(lbl, (bx + 5, by + 1))
 
     def _draw_plane_sprite(
         self,
@@ -649,13 +647,10 @@ class DisplayRenderer:
             if co_target:
                 self._draw_co_pilot_guide(co_target)
 
-        # Draw aircraft trails & approach paths
+        # Draw aircraft approach paths when cleared to land
         for ac in airbase.aircraft_fleet:
             if not ac.is_active_in_airspace():
                 continue
-            if len(ac.trail) >= 2:
-                for idx in range(len(ac.trail) - 1):
-                    self._draw_dotted_line(ac.trail[idx], ac.trail[idx + 1], (210, 228, 208), spacing=10)
 
             if ac.status in (FlightStatus.INTERCEPT, FlightStatus.APPROACHING) and ac.assigned_runway:
                 rwy = airbase.runways.get(ac.assigned_runway)
@@ -721,13 +716,12 @@ class DisplayRenderer:
             level_id=level_mgr.current_level,
         )
 
-        # Event Alert Toast Banner inside Left Canvas
-        if level_mgr.active_banner:
+        # Unified Comms/Event Alert Banner (strictly 1 banner at a time in the clear corridor)
+        co_target = agent.get_co_pilot_target() if (not drag_state and hasattr(agent, "get_co_pilot_target")) else None
+        if co_target and co_target[0].status == FlightStatus.HOLDING:
+            self._draw_radio_comms_bubble(co_target)
+        elif level_mgr.active_banner:
             self._draw_event_banner(level_mgr.active_banner)
-
-        # Radio Comms Alert
-        if not drag_state and hasattr(agent, "get_co_pilot_target"):
-            self._draw_radio_comms_bubble(agent.get_co_pilot_target())
 
         # Optional Modal Overlay (Pause / Level Complete / Crash)
         if modal_state:
@@ -791,25 +785,25 @@ class DisplayRenderer:
             return
 
         is_em = ac.is_emergency()
-        bw, bh = 460, 30
+        bw, bh = 380, 28
         bx = (config.WINDOW_WIDTH - bw) // 2
-        by = 56
+        by = 54
 
-        bg_col = (64, 18, 24, 220) if is_em else (18, 32, 50, 220)
+        bg_col = (56, 14, 18, 230) if is_em else (16, 28, 44, 230)
         border_col = config.COLOR_CRITICAL_RED if is_em else (255, 215, 65)
 
         comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
         comm_surf.fill(bg_col)
         self.screen.blit(comm_surf, (bx, by))
-        pygame.draw.rect(self.screen, border_col, (bx, by, bw, bh), 1, border_radius=6)
+        pygame.draw.rect(self.screen, border_col, (bx, by, bw, bh), 1, border_radius=5)
 
         if is_em:
-            msg = f"MAYDAY! {ac.flight_id} ({int(ac.fuel_level)}% FUEL): Land {rwy.id}  [SPACE]"
+            msg = f"MAYDAY! {ac.flight_id} ({int(ac.fuel_level)}% FUEL): Land {rwy.id} [SPACE]"
         else:
-            msg = f"TOWER: {ac.flight_id} ({ac.model}) -> {rwy.id}  [Press SPACE]"
+            msg = f"TOWER: {ac.flight_id} ({ac.model}) -> {rwy.id} [Press SPACE]"
 
         lbl = self.font_tiny.render(msg, True, config.COLOR_WHITE)
-        self.screen.blit(lbl, (bx + (bw - lbl.get_width()) // 2, by + 7))
+        self.screen.blit(lbl, (bx + (bw - lbl.get_width()) // 2, by + 6))
 
     def _draw_co_pilot_guide(self, co_pilot_target: Optional[Tuple[Any, Any]]):
         self._draw_ai_spotlight(co_pilot_target)
@@ -874,16 +868,23 @@ class DisplayRenderer:
         self.screen.blit(lbl, (bg.x + 4, bg.y + 1))
 
     def _draw_event_banner(self, banner: Dict[str, Any]):
-        bw, bh = 480, 44
-        bx = (config.CANVAS_WIDTH - bw) // 2
-        by = 62
+        bw, bh = 380, 28
+        bx = (config.WINDOW_WIDTH - bw) // 2
+        by = 54
         b_type = banner.get("type", "NORMAL")
         border = config.COLOR_CRITICAL_RED if b_type == "EMERGENCY" else config.COLOR_CYAN
-        bg = (64, 18, 24) if b_type == "EMERGENCY" else (16, 30, 48)
-        pygame.draw.rect(self.screen, bg, (bx, by, bw, bh), border_radius=6)
-        pygame.draw.rect(self.screen, border, (bx, by, bw, bh), 2, border_radius=6)
-        self.screen.blit(self.font_small.render(banner["title"], True, border), (bx + 14, by + 5))
-        self.screen.blit(self.font_tiny.render(banner["message"], True, config.COLOR_WHITE), (bx + 14, by + 23))
+        bg = (56, 14, 18, 230) if b_type == "EMERGENCY" else (16, 28, 44, 230)
+
+        comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        comm_surf.fill(bg)
+        self.screen.blit(comm_surf, (bx, by))
+        pygame.draw.rect(self.screen, border, (bx, by, bw, bh), 1, border_radius=5)
+
+        title = banner.get("title", "")
+        msg = banner.get("message", "")
+        full_txt = f"{title}: {msg}" if title else msg
+        lbl = self.font_tiny.render(full_txt[:55], True, config.COLOR_WHITE)
+        self.screen.blit(lbl, (bx + (bw - lbl.get_width()) // 2, by + 6))
 
     def _render_gameplay_sidebar(
         self,
