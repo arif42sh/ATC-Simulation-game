@@ -259,18 +259,18 @@ class SkyATCGame:
         buttons: List[Button] = []
 
         if self.settings_open:
-            mw, mh = 620, 500
+            mw, mh = 520, 404
             mx = (config.WINDOW_WIDTH - mw) // 2
             my = (config.WINDOW_HEIGHT - mh) // 2
 
-            # Section A: Audio & Sound Controls
+            # Section 1: AUDIO Buttons
             # 1. Master Audio
             m_on = bool(self.settings.get("master_audio", True))
             m_txt = "ON" if m_on else "OFF"
             m_col = (28, 150, 64) if m_on else (92, 42, 46)
             m_hv = (38, 185, 82) if m_on else (135, 56, 60)
             m_brd = config.COLOR_PRIMARY_GREEN if m_on else config.COLOR_CRITICAL_RED
-            buttons.append(Button(mx + 440, my + 88, 144, 32, m_txt, self._toggle_master_audio,
+            buttons.append(Button(mx + 346, my + 76, 138, 30, m_txt, self._toggle_master_audio,
                                   bg_color=m_col, hover_color=m_hv, border_color=m_brd, font_size=13))
 
             # 2. SFX Volume
@@ -281,7 +281,7 @@ class SkyATCGame:
                 sfx_txt, sfx_col, sfx_hv, sfx_brd = "50%", (36, 92, 168), (52, 122, 212), config.COLOR_CYAN
             else:
                 sfx_txt, sfx_col, sfx_hv, sfx_brd = "MUTE (0%)", (54, 62, 74), (74, 84, 98), (92, 104, 120)
-            buttons.append(Button(mx + 440, my + 132, 144, 32, sfx_txt, self._cycle_sfx_volume,
+            buttons.append(Button(mx + 346, my + 114, 138, 30, sfx_txt, self._cycle_sfx_volume,
                                   bg_color=sfx_col, hover_color=sfx_hv, border_color=sfx_brd, font_size=13))
 
             # 3. Airport Ambience
@@ -290,10 +290,10 @@ class SkyATCGame:
             amb_col = (28, 150, 64) if amb_on else (92, 42, 46)
             amb_hv = (38, 185, 82) if amb_on else (135, 56, 60)
             amb_brd = config.COLOR_PRIMARY_GREEN if amb_on else config.COLOR_CRITICAL_RED
-            buttons.append(Button(mx + 440, my + 176, 144, 32, amb_txt, self._toggle_ambience,
+            buttons.append(Button(mx + 346, my + 152, 138, 30, amb_txt, self._toggle_ambience,
                                   bg_color=amb_col, hover_color=amb_hv, border_color=amb_brd, font_size=13))
 
-            # Section B: Gameplay & Co-Pilot Mode
+            # Section 2: GAMEPLAY Buttons
             # 4. Co-Pilot Mode
             cp_mode = str(self.settings.get("copilot_mode", "BALANCED")).upper()
             if cp_mode == "HARDCORE":
@@ -302,7 +302,7 @@ class SkyATCGame:
                 cp_col, cp_hv, cp_brd = (28, 138, 66), (40, 175, 86), config.COLOR_PRIMARY_GREEN
             else:  # BALANCED
                 cp_col, cp_hv, cp_brd = (36, 92, 168), (52, 122, 212), config.COLOR_CYAN
-            buttons.append(Button(mx + 420, my + 248, 164, 32, cp_mode, self._cycle_copilot_mode,
+            buttons.append(Button(mx + 330, my + 214, 154, 30, cp_mode, self._cycle_copilot_mode,
                                   bg_color=cp_col, hover_color=cp_hv, border_color=cp_brd, font_size=13))
 
             # 5. Trajectory Lines
@@ -311,23 +311,23 @@ class SkyATCGame:
             tr_col = (28, 150, 64) if tr_on else (54, 62, 74)
             tr_hv = (38, 185, 82) if tr_on else (74, 84, 98)
             tr_brd = config.COLOR_PRIMARY_GREEN if tr_on else (92, 104, 120)
-            buttons.append(Button(mx + 440, my + 292, 144, 32, tr_txt, self._toggle_trajectory_lines,
+            buttons.append(Button(mx + 346, my + 252, 138, 30, tr_txt, self._toggle_trajectory_lines,
                                   bg_color=tr_col, hover_color=tr_hv, border_color=tr_brd, font_size=13))
 
-            # Section C: Progress Management
+            # Section 3: CAREER DATA Buttons
             # 6. Reset Career Data
             if not self.reset_confirm_open:
-                buttons.append(Button(mx + 420, my + 364, 164, 32, "RESET CAREER", self._on_request_reset_career,
+                buttons.append(Button(mx + 330, my + 314, 154, 30, "RESET CAREER", self._on_request_reset_career,
                                       bg_color=(128, 48, 42), hover_color=(168, 62, 54), border_color=config.COLOR_CRITICAL_RED, font_size=12))
             else:
-                buttons.append(Button(mx + 360, my + 364, 110, 32, "CONFIRM", self._on_confirm_reset_career,
+                buttons.append(Button(mx + 286, my + 314, 96, 30, "CONFIRM", self._on_confirm_reset_career,
                                       bg_color=(160, 32, 36), hover_color=(200, 44, 48), border_color=config.COLOR_CRITICAL_RED, font_size=12))
-                buttons.append(Button(mx + 480, my + 364, 104, 32, "CANCEL", self._on_cancel_reset_career,
+                buttons.append(Button(mx + 390, my + 314, 94, 30, "CANCEL", self._on_cancel_reset_career,
                                       bg_color=(52, 62, 74), hover_color=(72, 84, 100), font_size=12))
 
             # 7. Save & Close Modal
-            buttons.append(Button(mx + 220, my + mh - 44, 180, 34, "SAVE & CLOSE", self._close_settings,
-                                  bg_color=(28, 140, 72), hover_color=(38, 175, 92), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
+            buttons.append(Button(mx + 175, my + 358, 170, 32, "SAVE & CLOSE", self._close_settings,
+                                  bg_color=(28, 140, 72), hover_color=(38, 175, 92), border_color=config.COLOR_PRIMARY_GREEN, font_size=13))
 
             self.action_panel.set_buttons(buttons)
             return
