@@ -24,9 +24,11 @@ class TestGameplayControls(unittest.TestCase):
 
     def test_star_rating_calculation(self):
         self.assertEqual(self.game._calculate_stars(crashed=True, score=200, max_score=200), 0)
-        self.assertEqual(self.game._calculate_stars(crashed=False, score=180, max_score=200), 3)
-        self.assertEqual(self.game._calculate_stars(crashed=False, score=110, max_score=200), 2)
-        self.assertEqual(self.game._calculate_stars(crashed=False, score=40, max_score=200), 1)
+        self.assertEqual(self.game._calculate_stars(crashed=False, score=180, max_score=200, ai_rescues=0), 3)
+        self.assertEqual(self.game._calculate_stars(crashed=False, score=180, max_score=200, ai_rescues=1), 2)
+        self.assertEqual(self.game._calculate_stars(crashed=False, score=110, max_score=200, ai_rescues=0), 2)
+        self.assertEqual(self.game._calculate_stars(crashed=False, score=40, max_score=200, ai_rescues=0), 1)
+        self.assertEqual(self.game._calculate_stars(crashed=False, score=-100, max_score=200, ai_rescues=4, total_aircraft=4), 0)
 
     def test_interactive_auto_takeover_enabled(self):
         self.assertTrue(self.game.agent.auto_takeover_enabled)

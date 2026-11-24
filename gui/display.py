@@ -1188,7 +1188,8 @@ class DisplayRenderer:
         # Top HUD Bar
         tot_ac = level_mgr.level_cfg.get("total_aircraft", 10)
         max_pot = max(100, tot_ac * 150)
-        s_ratio = min(1.0, max(0.0, agent.reward_system.cumulative_reward / max_pot))
+        p_score = agent.reward_system.player_cumulative_reward
+        s_ratio = min(1.0, max(0.0, p_score / max_pot))
 
         active_target = agent.get_co_pilot_target() if hasattr(agent, "get_co_pilot_target") else None
         active_aircraft = active_target[0] if active_target else None
@@ -1198,7 +1199,7 @@ class DisplayRenderer:
         self._draw_top_hud_bar(
             landed_count=len(airbase.flight_history),
             score_label="YOU",
-            score_val=agent.reward_system.cumulative_reward,
+            score_val=p_score,
             mysql_ok=True,
             ai_ready=True,
             extra_text=f"WIND {int(airbase.wind_speed_kts)}KT",
@@ -1592,18 +1593,22 @@ class DisplayRenderer:
                 self._draw_vector_star(self.screen, sx, sy, s_rad * 0.65, (26, 36, 48))
 
         # Performance text badge under stars
+        ai_rescues = modal.get("ai_rescues", 0)
         if is_crash:
             rating_txt = "MISSION FAILED • AIRFIELD COLLISION"
             rating_col = config.COLOR_CRITICAL_RED
         elif stars == 3:
-            rating_txt = "3 STARS • PERFECT LANDINGS!"
+            rating_txt = "3 STARS • PERFECT HUMAN ATC!"
             rating_col = (255, 225, 65)
         elif stars == 2:
-            rating_txt = "2 STARS • GREAT JOB!"
+            rating_txt = "2 STARS • GREAT JOB!" if ai_rescues == 0 else "2 STARS • GREAT JOB! (1 AI RESCUE)"
             rating_col = (75, 225, 255)
-        else:
-            rating_txt = "1 STAR • LEVEL PASSED"
+        elif stars == 1:
+            rating_txt = "1 STAR • LEVEL PASSED" if ai_rescues == 0 else f"1 STAR • AI ASSISTED ({ai_rescues} RESCUES)"
             rating_col = (130, 225, 160)
+        else:
+            rating_txt = "0 STARS • FULL AI AUTOPILOT (NO PLAYER ACTION)"
+            rating_col = config.COLOR_WARN_AMBER
 
         r_surf = self.font_body_bold.render(rating_txt, True, rating_col)
         self.screen.blit(r_surf, r_surf.get_rect(center=(cx, my + 128)))
@@ -1623,7 +1628,8 @@ class DisplayRenderer:
         # Left: Big Bold Score
         sc_lbl = self.font_tiny.render("FINAL SCORE", True, config.COLOR_TEXT_MUTED)
         self.screen.blit(sc_lbl, (score_box.x + 22, score_box.y + 14))
-        sc_val = self.font_title.render(f"{score:+d} PTS", True, config.COLOR_CYAN)
+        sc_col = config.COLOR_CYAN if score >= 0 else config.COLOR_CRITICAL_RED
+        sc_val = self.font_title.render(f"{score:+d} PTS", True, sc_col)
         self.screen.blit(sc_val, (score_box.x + 22, score_box.y + 32))
 
         # Divider
@@ -1632,8 +1638,15 @@ class DisplayRenderer:
         # Right: Aircraft & Safety Status
         l_lbl = self.font_body.render(f"AIRCRAFT LANDED: {landings}", True, config.COLOR_WHITE)
         self.screen.blit(l_lbl, (score_box.centerx + 20, score_box.y + 18))
-        safe_str = "SAFETY: 100% PERFECT" if emerg == 0 else f"SAFETY: {emerg} EMERGENCIES SAFE"
-        safe_col = config.COLOR_PRIMARY_GREEN if emerg == 0 else config.COLOR_WARN_AMBER
+        if ai_rescues > 0:
+            safe_str = f"AI RESCUES: {ai_rescues} (SCORE PENALTY)"
+            safe_col = config.COLOR_WARN_AMBER
+        elif emerg == 0:
+            safe_str = "SAFETY: 100% PERFECT HUMAN ATC"
+            safe_col = config.COLOR_PRIMARY_GREEN
+        else:
+            safe_str = f"SAFETY: {emerg} EMERGENCIES SAFE"
+            safe_col = config.COLOR_PRIMARY_GREEN
         s_lbl = self.font_body.render(safe_str, True, safe_col)
         self.screen.blit(s_lbl, (score_box.centerx + 20, score_box.y + 44))
 

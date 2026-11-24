@@ -40,6 +40,8 @@ class SkyATCGame:
         self.level_mgr = LevelManager(self.airbase)
         self.agent = ATCAgent(self.airbase, self.db_logger)
         self.agent.auto_takeover_enabled = True  # Critical emergencies can be rescued after the active 20s window.
+        self.agent.full_auto_takeover = True
+        self.agent.penalize_ai_takeover = True
         self.renderer = DisplayRenderer(self.screen)
         self.sound = SoundManager()
         self.action_panel = ActionPanel()
@@ -256,6 +258,7 @@ class SkyATCGame:
         self.selected_level = max(1, min(20, int(level_id)))
         self.level_mgr.start_level(self.selected_level)
         self.agent.reset_for_level(self.selected_level)
+        self.agent.penalize_ai_takeover = True
         self.selected_aircraft = None
         self.override_mode = False
         self.drag_state = None
@@ -358,16 +361,26 @@ class SkyATCGame:
             self.renderer.add_floating_text(msg, ac.x, ac.y - 24, config.COLOR_CRITICAL_RED)
             return False
 
-    def _calculate_stars(self, crashed: bool, score: int, max_score: int) -> int:
+    def _calculate_stars(self, crashed: bool, score: int, max_score: int, ai_rescues: int = 0, total_aircraft: int = 4) -> int:
         if crashed:
             return 0
-        pct = (score / max(1, max_score)) if max_score > 0 else 1.0
-        if pct >= 0.75:
+        # If all aircraft were rescued by AI (player did 0 clearances):
+        if total_aircraft > 0 and ai_rescues >= total_aircraft:
+            return 0
+
+        pct = (score / max(1, max_score)) if max_score > 0 else 0.0
+
+        # 3 Stars: Flawless human ATC (at least 70% potential score AND zero AI takeovers)
+        if pct >= 0.70 and ai_rescues == 0:
             return 3
-        elif pct >= 0.45:
+        # 2 Stars: Good performance (at least 40% potential score AND at most 1 AI rescue)
+        elif pct >= 0.40 and ai_rescues <= 1:
             return 2
-        else:
+        # 1 Star: Safe completion, but low score or multiple AI rescues
+        elif score > 0 or ai_rescues < total_aircraft:
             return 1
+        else:
+            return 0
 
     def _on_accept_ai_plan(self):
         if self.agent.accept_ai_plan():
@@ -477,7 +490,7 @@ class SkyATCGame:
         """Awards touchdown bonus and combo streak points when aircraft reaches touchdown."""
         rewards = self.agent.reward_system
         actor = self.agent.score_actor_for_aircraft(aircraft)
-        score_before = rewards.cumulative_reward
+        score_before = rewards.player_cumulative_reward
         now_s = pygame.time.get_ticks() / 1000.0
         combo = self.combo_state.get(actor, self.combo_state["PLAYER"])
         if now_s - combo["last_landing_time"] <= config.COMBO_TIMEOUT_SECONDS:
@@ -494,21 +507,28 @@ class SkyATCGame:
             combo["streak"] = 1
         combo["last_landing_time"] = now_s
 
-        if actor == "PLAYER" and aircraft.timely_player_decision:
-            rewards.evaluate_action("TIMELY_PLAYER_DECISION", aircraft.flight_id, "Player cleared aircraft within decision window", actor=actor)
-        if actor == "PLAYER" and aircraft.followed_ai_recommendation:
-            rewards.evaluate_action("AI_SYNERGY_BONUS", aircraft.flight_id, "Player followed AI recommendation and completed landing", actor=actor)
+        if actor == "PLAYER":
+            if aircraft.timely_player_decision:
+                rewards.evaluate_action("TIMELY_PLAYER_DECISION", aircraft.flight_id, "Player cleared aircraft within decision window", actor=actor)
+            if aircraft.followed_ai_recommendation:
+                rewards.evaluate_action("AI_SYNERGY_BONUS", aircraft.flight_id, "Player followed AI recommendation and completed landing", actor=actor)
 
-        rewards.evaluate_action("TOUCHDOWN_REWARD", aircraft.flight_id, "Touchdown bonus", actor=actor)
-
-        if actor == "AI":
-            rewards.ai_rescue_count += 1
-            self.renderer.add_floating_text(f"AI RESCUE: {aircraft.flight_id} SAFE", aircraft.x, aircraft.y - 24, config.COLOR_CYAN)
-        else:
-            gained = rewards.cumulative_reward - score_before
+            rewards.evaluate_action("TOUCHDOWN_REWARD", aircraft.flight_id, "Touchdown bonus", actor=actor)
+            gained = rewards.player_cumulative_reward - score_before
             self.renderer.add_floating_text(
                 f"{aircraft.flight_id} LANDED!  +{gained} PTS",
                 aircraft.x, aircraft.y - 20, config.COLOR_PRIMARY_GREEN,
+            )
+        else:
+            # AI Auto-Takeover Rescue:
+            rewards.ai_rescue_count += 1
+            # Break player combo streak because human failed to maintain control!
+            self.combo_state["PLAYER"]["streak"] = 0
+            rewards.evaluate_action("TOUCHDOWN_REWARD", aircraft.flight_id, "AI Rescue Touchdown", actor="AI")
+            self.sound.play("warning")
+            self.renderer.add_floating_text(
+                f"AI RESCUE: {aircraft.flight_id} (-50 PTS TIMEOUT)",
+                aircraft.x, aircraft.y - 24, config.COLOR_WARN_AMBER,
             )
 
     def _trigger_crash_modal(self, crashed_ac: Aircraft):
@@ -516,7 +536,7 @@ class SkyATCGame:
         self.has_active_session = False
         crash_actor = self.agent.score_actor_for_aircraft(crashed_ac)
         self.agent.reward_system.evaluate_action("UNSAFE_DECISION", crashed_ac.flight_id, crashed_ac.crash_reason, actor=crash_actor)
-        score = self.agent.reward_system.cumulative_reward
+        score = self.agent.reward_system.player_cumulative_reward
         self.db_logger.log_level_history(
             self.level_mgr.current_level, "CRASHED", score,
             len(self.airbase.flight_history), self.agent.stats["emergencies_handled"],
@@ -537,28 +557,35 @@ class SkyATCGame:
         self._rebuild_buttons()
 
     def _trigger_complete_modal(self):
-        self.sound.play("victory")
         self.has_active_session = False
-        score = self.agent.reward_system.cumulative_reward
+        score = self.agent.reward_system.player_cumulative_reward
         landed = len(self.airbase.flight_history)
         emerg = self.agent.stats["emergencies_handled"]
+        ai_rescues = self.agent.reward_system.ai_rescue_count
         self.db_logger.log_level_history(self.level_mgr.current_level, "COMPLETED", score, landed, emerg)
         self.db_logger.log_event(self.level_mgr.current_level, "LEVEL_COMPLETE", f"Completed Level {self.level_mgr.current_level} with {score} pts")
 
-        total_ac = self.level_mgr.level_cfg.get("total_aircraft", 10)
+        total_ac = self.level_mgr.level_cfg.get("total_aircraft", landed)
         max_pot = max(100, total_ac * 150)
-        stars = self._calculate_stars(crashed=False, score=score, max_score=max_pot)
+        stars = self._calculate_stars(crashed=False, score=score, max_score=max_pot, ai_rescues=ai_rescues, total_aircraft=total_ac)
+        self.sound.play("victory" if stars > 0 else "warning")
+
+        subtitle = (
+            f"All {landed} incoming aircraft landed safely ({self.level_mgr.level_cfg['difficulty']})."
+            if ai_rescues == 0 else
+            f"{landed - ai_rescues}/{landed} player cleared • {ai_rescues} AI takeover rescue{'s' if ai_rescues > 1 else ''}."
+        )
 
         self.modal_state = {
             "type": "COMPLETE",
             "title": f"LEVEL {self.level_mgr.current_level:02d} COMPLETE!",
-            "subtitle": f"All {landed} incoming aircraft landed safely ({self.level_mgr.level_cfg['difficulty']}).",
+            "subtitle": subtitle,
             "stars": stars,
             "score": score,
             "landings": landed,
             "emergencies": emerg,
+            "ai_rescues": ai_rescues,
             "ai_score": self.agent.reward_system.ai_cumulative_reward,
-            "ai_rescues": self.agent.reward_system.ai_rescue_count,
             "breakdown": self.agent.reward_system.get_breakdown(),
         }
         self._rebuild_buttons()
@@ -590,7 +617,7 @@ class SkyATCGame:
     def get_star_progress_ratio(self) -> float:
         total_ac = self.level_mgr.level_cfg.get("total_aircraft", 10)
         max_pot = max(100, total_ac * 150)
-        score = max(0, self.agent.reward_system.cumulative_reward)
+        score = max(0, self.agent.reward_system.player_cumulative_reward)
         return min(1.0, score / max_pot)
 
     def _find_hovered_runway(self, mx: int, my: int) -> Optional[str]:

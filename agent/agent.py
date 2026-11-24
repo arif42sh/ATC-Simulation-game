@@ -64,6 +64,7 @@ class ATCAgent:
         }
         self.auto_takeover_enabled: bool = True
         self.full_auto_takeover: bool = True
+        self.penalize_ai_takeover: bool = False
 
     def reset_for_level(self, level_id: int):
         """Resets agent state and syncs level runways with database."""
@@ -121,14 +122,13 @@ class ATCAgent:
             if target:
                 ac, _ = target
                 if ac.hitl_pending and ac.hitl_decision_timer <= 0.0:
-                    if not self.full_auto_takeover and not ac.timeout_penalty_recorded:
-                        if ac.is_emergency():
-                            penalty = "MISSED_DECISION" if self._is_timeout_rescue_emergency(ac) else "EMERGENCY_DELAYED"
-                            pts = self.reward_system.evaluate_action(penalty, ac.flight_id, "Player decision window expired", actor="PLAYER")
-                        else:
-                            pts = self.reward_system.evaluate_action("MISSED_DECISION", ac.flight_id, "Player decision window expired", actor="PLAYER")
+                    if self.penalize_ai_takeover and not ac.timeout_penalty_recorded:
                         ac.timeout_penalty_recorded = True
-                        self._push_notification(f"PLAYER TIMEOUT PENALTY: {ac.flight_id} {pts:+d} PTS")
+                        penalty = "AI_TAKEOVER_PENALTY"
+                        pts = self.reward_system.evaluate_action(
+                            penalty, ac.flight_id, "Player decision window expired (AI Takeover)", actor="PLAYER"
+                        )
+                        self._push_notification(f"AI TAKEOVER PENALTY: {ac.flight_id} {pts:+d} PTS")
                     ac.decision_window_expired = True
 
                     if self.full_auto_takeover or self._is_timeout_rescue_emergency(ac):

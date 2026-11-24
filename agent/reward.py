@@ -16,6 +16,7 @@ class RewardSystem:
     def __init__(self, db_logger: Optional[DatabaseLogger] = None):
         self.db_logger = db_logger
         self.cumulative_reward: int = 0
+        self.player_cumulative_reward: int = 0
         self.ai_cumulative_reward: int = 0
         self.system_cumulative_reward: int = 0
         self.ai_rescue_count: int = 0
@@ -25,6 +26,7 @@ class RewardSystem:
     def reset(self, level_id: int = 1):
         self.level_id = level_id
         self.cumulative_reward = 0
+        self.player_cumulative_reward = 0
         self.ai_cumulative_reward = 0
         self.system_cumulative_reward = 0
         self.ai_rescue_count = 0

@@ -309,6 +309,7 @@ REWARDS: Dict[str, int] = {
     "COMBO_STREAK": COMBO_STREAK_BONUS_PTS,
     "TIMELY_PLAYER_DECISION": TIMELY_PLAYER_DECISION_PTS,
     "MISSED_DECISION": -10,
+    "AI_TAKEOVER_PENALTY": -50,
 }
 
 # -----------------------------------------------------------------------------
