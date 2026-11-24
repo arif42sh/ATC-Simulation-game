@@ -160,6 +160,7 @@ class DisplayRenderer:
         ai_ready: bool,
         extra_text: str = "",
         show_status_box: bool = True,
+        show_debug_box: bool = False,
         star_ratio: float = 0.0,
         decision_remaining: float = 20.0,
         decision_initial: float = 20.0,
@@ -264,21 +265,22 @@ class DisplayRenderer:
                 e_surf = self.font_mono_sm.render(extra_text, True, config.COLOR_CYAN)
                 self.screen.blit(e_surf, (430, 18))
 
-            box = pygame.Rect(config.WINDOW_WIDTH - 235, 10, 215, 62)
-            pygame.draw.rect(self.screen, (20, 34, 52), box, border_radius=8)
-            pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 1, border_radius=8)
+            if show_debug_box:
+                box = pygame.Rect(config.WINDOW_WIDTH - 235, 10, 215, 62)
+                pygame.draw.rect(self.screen, (20, 34, 52), box, border_radius=8)
+                pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 1, border_radius=8)
 
-            if mysql_ok:
-                db_txt, db_col = "MYSQL CONNECTED", config.COLOR_PRIMARY_GREEN
-            elif config.IS_WEB or config.DB_TYPE.lower() == "memory":
-                db_txt, db_col = "BROWSER STORAGE", config.COLOR_CYAN
-            else:
-                db_txt, db_col = "SQLITE FALLBACK", config.COLOR_WARN_AMBER
-            self.screen.blit(self.font_tiny.render(db_txt, True, db_col), (box.x + 14, box.y + 11))
+                if mysql_ok:
+                    db_txt, db_col = "MYSQL CONNECTED", config.COLOR_PRIMARY_GREEN
+                elif config.IS_WEB or config.DB_TYPE.lower() == "memory":
+                    db_txt, db_col = "BROWSER STORAGE", config.COLOR_CYAN
+                else:
+                    db_txt, db_col = "SQLITE FALLBACK", config.COLOR_WARN_AMBER
+                self.screen.blit(self.font_tiny.render(db_txt, True, db_col), (box.x + 14, box.y + 11))
 
-            ai_txt = "AI AGENT READY" if ai_ready else "UTILITY AGENT READY"
-            ai_col = config.COLOR_PRIMARY_GREEN if ai_ready else config.COLOR_CYAN
-            self.screen.blit(self.font_tiny.render(ai_txt, True, ai_col), (box.x + 14, box.y + 34))
+                ai_txt = "AI AGENT READY" if ai_ready else "UTILITY AGENT READY"
+                ai_col = config.COLOR_PRIMARY_GREEN if ai_ready else config.COLOR_CYAN
+                self.screen.blit(self.font_tiny.render(ai_txt, True, ai_col), (box.x + 14, box.y + 34))
 
     def _draw_airfield_scenery(self, airbase: Airbase):
         """Draws realistic airport landscape: water reservoirs, perimeter roads, and tree clusters (matching Image 1 & 2)."""
@@ -1677,6 +1679,8 @@ class DisplayRenderer:
             score_val=global_stats.get("hi_score", 0),
             mysql_ok=mysql_ok,
             ai_ready=ai_ready,
+            extra_text="DIAGNOSTICS & TELEMETRY",
+            show_debug_box=True,
         )
 
         cx = config.WINDOW_WIDTH // 2

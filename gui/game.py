@@ -103,16 +103,14 @@ class SkyATCGame:
             bw, bh = 260, 48
             bx = cx - bw // 2
             buttons.extend([
-                Button(bx, 305, bw, bh, "START GAME", self._on_start_game,
+                Button(bx, 315, bw, bh, "START GAME", self._on_start_game,
                        bg_color=(28, 150, 64), hover_color=(38, 185, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=16),
-                Button(bx, 365, bw, bh, "RESUME GAME", self._on_resume_game,
+                Button(bx, 380, bw, bh, "RESUME GAME", self._on_resume_game,
                        bg_color=(56, 86, 118), hover_color=(76, 114, 152), border_color=config.COLOR_CYAN,
                        font_size=15, enabled=self.has_active_session),
-                Button(bx, 425, bw, bh, "SELECT LEVEL", lambda: self._switch_state(GameState.LEVEL_SELECT),
+                Button(bx, 445, bw, bh, "SELECT LEVEL", lambda: self._switch_state(GameState.LEVEL_SELECT),
                        bg_color=(36, 92, 168), hover_color=(52, 122, 212), border_color=config.COLOR_CYAN, font_size=15),
-                Button(bx, 485, bw, bh, "AI & DB STATS", lambda: self._switch_state(GameState.AI_STATS),
-                       bg_color=(165, 96, 28), hover_color=(205, 122, 38), border_color=config.COLOR_WARN_AMBER, font_size=15),
-                Button(bx, 545, bw, bh, "EXIT (DESKTOP)" if config.IS_WEB else "EXIT", self._on_exit,
+                Button(bx, 510, bw, bh, "EXIT (DESKTOP)" if config.IS_WEB else "EXIT", self._on_exit,
                        bg_color=(92, 42, 46), hover_color=(135, 56, 60), border_color=config.COLOR_CRITICAL_RED,
                        font_size=14 if config.IS_WEB else 15, enabled=not config.IS_WEB),
             ])
@@ -636,6 +634,13 @@ class SkyATCGame:
                 return
 
             if self.action_panel.handle_event(event):
+                continue
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
+                if self.current_state == GameState.AI_STATS:
+                    self._switch_state(GameState.MAIN_MENU)
+                else:
+                    self._switch_state(GameState.AI_STATS)
                 continue
 
             if self.current_state == GameState.AI_STATS:

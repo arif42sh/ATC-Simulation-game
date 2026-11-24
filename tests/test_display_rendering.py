@@ -4,6 +4,7 @@ os.environ["SDL_VIDEODRIVER"] = "dummy"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 import pygame
 from environment.aircraft import Aircraft
+from environment.airbase import Airbase
 from gui.display import DisplayRenderer
 
 
@@ -61,6 +62,15 @@ class TestDisplayRendering(unittest.TestCase):
             "emergencies": 0,
         }
         self.renderer._render_modal_overlay(modal)
+
+    def test_main_menu_and_stats_rendering(self):
+        from database.queries import DatabaseLogger
+        airbase = Airbase(level_id=1)
+        stats = {"aircraft_landed": 10, "hi_score": 1200}
+        self.renderer.render_main_menu(airbase, stats, mysql_ok=False, ai_ready=True)
+        db = DatabaseLogger()
+        dash_data = db.get_stats_dashboard_data()
+        self.renderer.render_ai_stats(airbase, stats, dash_data, log_scroll=0, export_toast="", mysql_ok=False, ai_ready=True)
 
 
 if __name__ == "__main__":
