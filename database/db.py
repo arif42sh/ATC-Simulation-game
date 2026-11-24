@@ -262,6 +262,7 @@ class DatabaseManager:
                     aircraft_id VARCHAR(32),
                     event_type VARCHAR(64) NOT NULL,
                     reward_points INTEGER NOT NULL,
+                    actor VARCHAR(16) NOT NULL DEFAULT 'SYSTEM',
                     event_timestamp TIMESTAMP DEFAULT {ts_default}
                 );
                 """,
@@ -269,6 +270,16 @@ class DatabaseManager:
 
             for q in table_queries:
                 cursor.execute(q)
+
+            # Add score ownership to existing databases without dropping their history.
+            if self.engine_type == "mysql":
+                cursor.execute("SHOW COLUMNS FROM reward_history LIKE 'actor'")
+                has_reward_actor = cursor.fetchone() is not None
+            else:
+                cursor.execute("PRAGMA table_info(reward_history)")
+                has_reward_actor = any(row["name"] == "actor" for row in cursor.fetchall())
+            if not has_reward_actor:
+                cursor.execute("ALTER TABLE reward_history ADD COLUMN actor VARCHAR(16) NOT NULL DEFAULT 'SYSTEM'")
 
             if self.engine_type == "mysql":
                 cursor.execute("INSERT IGNORE INTO schema_meta (version) VALUES (%s)", (self.SCHEMA_VERSION,))

@@ -70,11 +70,16 @@ class Aircraft:
         self.arrival_seq: int = arrival_seq
         self.crash_reason: str = ""
 
-        # Human-in-the-Loop (HITL) 10-second decision window
+        # Human-in-the-Loop (HITL) decision window
         self.hitl_decision_timer: float = config.HITL_TIMEOUT_SECONDS
         self.hitl_initial_timer: float = config.HITL_TIMEOUT_SECONDS
         self.hitl_pending: bool = True
         self.decision_maker: Optional[str] = None
+        self.timeout_penalty_recorded: bool = False
+        self.decision_window_expired: bool = False
+        self.efficient_assignment: bool = False
+        self.timely_player_decision: bool = False
+        self.followed_ai_recommendation: bool = False
 
         # Position & Kinematics (2D screen space)
         self.x = float(x)
@@ -144,6 +149,8 @@ class Aircraft:
         self.status = FlightStatus.HOLDING
         self.hitl_pending = True
         self.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
+        self.timeout_penalty_recorded = False
+        self.decision_window_expired = False
         self.altitude_ft = 3800.0
 
     def is_emergency(self) -> bool:
@@ -152,15 +159,21 @@ class Aircraft:
     def is_active_in_airspace(self) -> bool:
         return self.status not in (FlightStatus.LANDED, FlightStatus.CRASHED)
 
-    def update(self, dt: float):
+    def update(
+        self,
+        dt: float,
+        advance_decision_timer: bool = True,
+        decision_timer_dt: Optional[float] = None,
+    ):
         """Advances waiting time, HITL timer, fuel burn, and 2D motion."""
         if not self.is_active_in_airspace():
             return
 
         if self.status == FlightStatus.HOLDING:
             self.waiting_time += dt
-            if self.hitl_pending and self.hitl_decision_timer > 0.0:
-                self.hitl_decision_timer = max(0.0, self.hitl_decision_timer - dt)
+            if self.hitl_pending and advance_decision_timer and self.hitl_decision_timer > 0.0:
+                timer_dt = dt if decision_timer_dt is None else decision_timer_dt
+                self.hitl_decision_timer = max(0.0, self.hitl_decision_timer - timer_dt)
 
         # Fuel burn (pauses after touchdown roll)
         if self.status in (FlightStatus.HOLDING, FlightStatus.INTERCEPT, FlightStatus.APPROACHING):

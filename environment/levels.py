@@ -46,13 +46,13 @@ class LevelManager:
         self.flight_counter = 101 + (self.current_level - 1) * 15
         self.auto_spawn_enabled = True
 
-        # Spawn initial 2-3 flights with a brief grace window so player can orient first
+        # Spawn an initial wave; the active AI recommendation gets the full decision window.
         initial_wave = min(3 if self.current_level >= 6 else 2, self.target_aircraft)
         for idx in range(initial_wave):
             force_emerg = (idx == 0 and self.current_level >= 4)
             ac = self.spawn_aircraft(force_emergency=force_emerg)
-            ac.hitl_initial_timer = config.HITL_TIMEOUT_SECONDS + 4.0
-            ac.hitl_decision_timer = ac.hitl_initial_timer
+            ac.hitl_initial_timer = config.HITL_TIMEOUT_SECONDS
+            ac.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
 
         hint = (
             "Drag a plane to a GREEN runway, or press [SPACE] / ACCEPT AI PLAN"

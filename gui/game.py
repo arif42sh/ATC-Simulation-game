@@ -39,7 +39,7 @@ class SkyATCGame:
         self.airbase = Airbase(level_id=1)
         self.level_mgr = LevelManager(self.airbase)
         self.agent = ATCAgent(self.airbase, self.db_logger)
-        self.agent.auto_takeover_enabled = True  # Co-pilot takeover triggers automatically when 30s timer expires
+        self.agent.auto_takeover_enabled = True  # Critical emergencies can be rescued after the active 20s window.
         self.renderer = DisplayRenderer(self.screen)
         self.sound = SoundManager()
         self.action_panel = ActionPanel()
@@ -56,10 +56,13 @@ class SkyATCGame:
         self.override_mode = False
         self.drag_state: Optional[Dict[str, Any]] = None
         self.modal_state: Optional[Dict[str, Any]] = None
+        self.tutorial_seen = False
 
-        # Casual dopamine scoring & combo streaks
-        self.combo_streak: int = 0
-        self.last_landing_time: float = -999.0
+        # Player and AI earn independent touchdown combo streaks.
+        self.combo_state = {
+            "PLAYER": {"streak": 0, "last_landing_time": -999.0},
+            "AI": {"streak": 0, "last_landing_time": -999.0},
+        }
 
         self._seen_emergency_ids: set = set()
         self._cached_global = self.db_logger.get_global_counters()
@@ -156,49 +159,58 @@ class SkyATCGame:
             ])
 
         elif self.current_state == GameState.SIMULATION:
-            if self.modal_state:
-                mw, mh = 620, 440
-                mx, my = (config.WINDOW_WIDTH - mw) // 2, (config.WINDOW_HEIGHT - mh) // 2
-                by = my + mh - 70
-                if self.modal_state["type"] == "COMPLETE" and self.level_mgr.current_level < 20:
-                    buttons.append(Button(mx + 42, by, 170, 44, "NEXT LEVEL",
-                                          lambda: self.start_level(self.level_mgr.current_level + 1),
-                                          bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
-                    buttons.append(Button(mx + 226, by, 168, 44, "REPLAY LEVEL",
-                                          lambda: self.start_level(self.level_mgr.current_level),
-                                          bg_color=(36, 86, 152), hover_color=(52, 114, 196), border_color=config.COLOR_CYAN, font_size=14))
-                    buttons.append(Button(mx + 408, by, 168, 44, "MAIN MENU",
-                                          self._exit_modal_to_menu,
-                                          bg_color=(82, 54, 42), hover_color=(118, 76, 58), font_size=14))
-                else:
-                    buttons.append(Button(mx + 95, by, 200, 44, "RETRY LEVEL",
-                                          lambda: self.start_level(self.level_mgr.current_level),
-                                          bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
-                    buttons.append(Button(mx + 325, by, 200, 44, "MAIN MENU",
-                                          self._exit_modal_to_menu,
-                                          bg_color=(110, 48, 52), hover_color=(148, 64, 68), border_color=config.COLOR_CRITICAL_RED, font_size=14))
-            else:
-                # Top bar controls: Pause (||), Speed (0.5x/1x/2x), SFX Mute, Menu
-                p_lbl = "RESUME" if self.is_paused else "PAUSE"
-                speed_lbl = "0.5x" if self.sim_speed < 0.9 else f"{int(self.sim_speed)}x"
-                speed_bg = (28, 92, 96) if self.sim_speed < 0.9 else ((145, 96, 26) if self.sim_speed > 1.1 else (38, 64, 92))
-                speed_hv = (40, 128, 134) if self.sim_speed < 0.9 else ((180, 120, 36) if self.sim_speed > 1.1 else (54, 92, 130))
-                speed_brd = config.COLOR_PRIMARY_GREEN if self.sim_speed < 0.9 else (config.COLOR_WARN_AMBER if self.sim_speed > 1.1 else config.COLOR_CYAN)
-                buttons.extend([
-                    Button(835, 9, 80, 30, p_lbl, self._toggle_pause,
-                           bg_color=(160, 88, 28) if self.is_paused else (38, 64, 92),
-                           hover_color=(195, 110, 38) if self.is_paused else (54, 92, 130),
-                           border_color=config.COLOR_CYAN, font_size=12),
-                    Button(925, 9, 62, 30, speed_lbl, self._toggle_speed,
-                           bg_color=speed_bg, hover_color=speed_hv, border_color=speed_brd, font_size=12),
-                    Button(997, 9, 60, 30, "MUTE" if self.sound.muted else "SFX", self._toggle_mute,
-                           bg_color=(42, 56, 74), hover_color=(62, 82, 108), font_size=11),
-                    Button(1260, 9, 84, 30, "MENU", self._return_to_menu_paused,
-                           bg_color=(52, 62, 82), hover_color=(76, 92, 118), font_size=12),
-                ])
+            # Top bar controls: Pause (||), Speed (0.5x/1x/2x), SFX Mute, Help, Menu
+            p_lbl = "RESUME" if self.is_paused else "PAUSE"
+            speed_lbl = "0.5x" if self.sim_speed < 0.9 else f"{int(self.sim_speed)}x"
+            speed_bg = (28, 92, 96) if self.sim_speed < 0.9 else ((145, 96, 26) if self.sim_speed > 1.1 else (38, 64, 92))
+            speed_hv = (40, 128, 134) if self.sim_speed < 0.9 else ((180, 120, 36) if self.sim_speed > 1.1 else (54, 92, 130))
+            speed_brd = config.COLOR_PRIMARY_GREEN if self.sim_speed < 0.9 else (config.COLOR_WARN_AMBER if self.sim_speed > 1.1 else config.COLOR_CYAN)
+            buttons.extend([
+                Button(835, 9, 80, 30, p_lbl, self._toggle_pause,
+                       bg_color=(160, 88, 28) if self.is_paused else (38, 64, 92),
+                       hover_color=(195, 110, 38) if self.is_paused else (54, 92, 130),
+                       border_color=config.COLOR_CYAN, font_size=12),
+                Button(925, 9, 62, 30, speed_lbl, self._toggle_speed,
+                       bg_color=speed_bg, hover_color=speed_hv, border_color=speed_brd, font_size=12),
+                Button(997, 9, 60, 30, "MUTE" if self.sound.muted else "SFX", self._toggle_mute,
+                       bg_color=(42, 56, 74), hover_color=(62, 82, 108), font_size=11),
+                Button(1070, 9, 72, 30, "HELP [F1]", self._show_tutorial,
+                       bg_color=(42, 72, 58), hover_color=(58, 100, 72), border_color=(110, 170, 115), font_size=10),
+                Button(1260, 9, 84, 30, "MENU", self._return_to_menu_paused,
+                       bg_color=(52, 62, 82), hover_color=(76, 92, 118), font_size=12),
+            ])
 
-                # Fullscreen Simulation HUD: only top control buttons (Pause, Speed, SFX, Menu)
-                pass
+            if self.modal_state:
+                if self.modal_state.get("type") == "TUTORIAL":
+                    mx, my = (config.WINDOW_WIDTH - 760) // 2, (config.WINDOW_HEIGHT - 390) // 2
+                    by = my + 326
+                    step = int(self.modal_state.get("step", 0))
+                    buttons.append(Button(mx + 34, by, 180, 42, "SKIP TUTORIAL", self._close_tutorial,
+                                          bg_color=(52, 62, 82), hover_color=(76, 92, 118), font_size=12))
+                    label = "START PLAYING" if step >= 2 else "NEXT"
+                    buttons.append(Button(mx + 546, by, 180, 42, label, self._advance_tutorial,
+                                          bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=13))
+                else:
+                    mw, mh = 620, 440
+                    mx, my = (config.WINDOW_WIDTH - mw) // 2, (config.WINDOW_HEIGHT - mh) // 2
+                    by = my + mh - 70
+                    if self.modal_state["type"] == "COMPLETE" and self.level_mgr.current_level < 20:
+                        buttons.append(Button(mx + 42, by, 170, 44, "NEXT LEVEL",
+                                              lambda: self.start_level(self.level_mgr.current_level + 1),
+                                              bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
+                        buttons.append(Button(mx + 226, by, 168, 44, "REPLAY LEVEL",
+                                              lambda: self.start_level(self.level_mgr.current_level),
+                                              bg_color=(36, 86, 152), hover_color=(52, 114, 196), border_color=config.COLOR_CYAN, font_size=14))
+                        buttons.append(Button(mx + 408, by, 168, 44, "MAIN MENU",
+                                              self._exit_modal_to_menu,
+                                              bg_color=(82, 54, 42), hover_color=(118, 76, 58), font_size=14))
+                    else:
+                        buttons.append(Button(mx + 95, by, 200, 44, "RETRY LEVEL",
+                                              lambda: self.start_level(self.level_mgr.current_level),
+                                              bg_color=(28, 150, 64), hover_color=(38, 188, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
+                        buttons.append(Button(mx + 325, by, 200, 44, "MAIN MENU",
+                                              self._exit_modal_to_menu,
+                                              bg_color=(110, 48, 52), hover_color=(148, 64, 68), border_color=config.COLOR_CRITICAL_RED, font_size=14))
 
         elif self.current_state == GameState.AI_STATS:
             buttons.extend([
@@ -250,12 +262,39 @@ class SkyATCGame:
         self.modal_state = None
         self.is_paused = False
         self.sim_speed = config.SIMULATION_SPEED_NORMAL
+        self.combo_state = {
+            "PLAYER": {"streak": 0, "last_landing_time": -999.0},
+            "AI": {"streak": 0, "last_landing_time": -999.0},
+        }
         self.has_active_session = True
         self._seen_emergency_ids.clear()
         self.renderer.floating_texts.clear()
         self.renderer.particles.clear()
         self.db_logger.log_event(self.selected_level, "LEVEL_START", f"Started Level {self.selected_level:02d}")
+        if not self.tutorial_seen:
+            self.modal_state = {"type": "TUTORIAL", "step": 0}
         self._switch_state(GameState.SIMULATION)
+
+    def _show_tutorial(self):
+        self.sound.play("click")
+        self.is_paused = False
+        self.modal_state = {"type": "TUTORIAL", "step": 0}
+        self._rebuild_buttons()
+
+    def _advance_tutorial(self):
+        if not self.modal_state or self.modal_state.get("type") != "TUTORIAL":
+            return
+        step = int(self.modal_state.get("step", 0))
+        if step >= 2:
+            self._close_tutorial()
+        else:
+            self.modal_state["step"] = step + 1
+            self._rebuild_buttons()
+
+    def _close_tutorial(self):
+        self.tutorial_seen = True
+        self.modal_state = None
+        self._rebuild_buttons()
 
     def _return_to_menu_paused(self):
         self.sound.play("click")
@@ -310,8 +349,8 @@ class SkyATCGame:
             self.sound.play("click")
             self.selected_aircraft = None
             self.override_mode = False
-            self.agent.reward_system.evaluate_action("AI_SYNERGY_BONUS", ac.flight_id, "Co-pilot 1-click synergy")
-            self.renderer.add_floating_text(f"+{config.AI_SYNERGY_BONUS_PTS} AI SYNERGY!", ac.x, ac.y - 30, config.COLOR_CYAN)
+            ac.followed_ai_recommendation = True
+            self.renderer.add_floating_text(f"AI RECOMMENDATION CLEARED: {ac.flight_id}", ac.x, ac.y - 30, config.COLOR_CYAN)
             self._rebuild_buttons()
             return True
         else:
@@ -393,14 +432,17 @@ class SkyATCGame:
             self.renderer.update_vfx(raw_dt)
 
             if self.current_state == GameState.SIMULATION and not self.is_paused and not self.modal_state:
-                crashed_ac = self.airbase.update(dt)
+                active_target = self.agent.get_co_pilot_target()
+                active_flight_id = active_target[0].flight_id if active_target else None
+                crashed_ac = self.airbase.update(dt, decision_dt=raw_dt, decision_flight_id=active_flight_id)
                 self.agent.step(dt)
                 self.level_mgr.update(dt)
 
                 # Trigger audio, notifications & smoke on events
                 while self.agent.notifications:
                     note = self.agent.notifications.pop(0)
-                    self.renderer.add_floating_text(note, 480, 120, config.COLOR_CYAN)
+                    note_color = config.COLOR_CRITICAL_RED if "PENALTY" in note else config.COLOR_CYAN
+                    self.renderer.add_floating_text(note, 480, 120, note_color)
 
                 for ac in self.airbase.aircraft_fleet:
                     if ac.is_emergency() and ac.flight_id not in self._seen_emergency_ids:
@@ -411,19 +453,7 @@ class SkyATCGame:
                         self.sound.play("landing")
                         self.renderer.add_touchdown_smoke(ac.x, ac.y)
 
-                        # Casual dopamine scoring & combo streaks
-                        now_s = pygame.time.get_ticks() / 1000.0
-                        if now_s - self.last_landing_time <= config.COMBO_TIMEOUT_SECONDS:
-                            self.combo_streak += 1
-                            streak_pts = config.COMBO_STREAK_BONUS_PTS * (self.combo_streak - 1)
-                            self.agent.reward_system.evaluate_action("COMBO_STREAK", ac.flight_id, f"Streak x{self.combo_streak}")
-                            self.renderer.add_floating_text(f"COMBO x{self.combo_streak}! +{streak_pts}", ac.x, ac.y - 42, (255, 215, 65))
-                        else:
-                            self.combo_streak = 1
-                        self.last_landing_time = now_s
-
-                        self.agent.reward_system.evaluate_action("TOUCHDOWN_REWARD", ac.flight_id, "Touchdown bonus")
-                        self.renderer.add_floating_text(f"{ac.flight_id} LANDED! +{config.TOUCHDOWN_PTS}", ac.x, ac.y - 20, config.COLOR_PRIMARY_GREEN)
+                        self._score_touchdown(ac)
 
                 if crashed_ac:
                     self._trigger_crash_modal(crashed_ac)
@@ -443,10 +473,49 @@ class SkyATCGame:
     def run(self):
         asyncio.run(self.run_async())
 
+    def _score_touchdown(self, aircraft: Aircraft):
+        """Awards touchdown bonus and combo streak points when aircraft reaches touchdown."""
+        rewards = self.agent.reward_system
+        actor = self.agent.score_actor_for_aircraft(aircraft)
+        score_before = rewards.cumulative_reward
+        now_s = pygame.time.get_ticks() / 1000.0
+        combo = self.combo_state.get(actor, self.combo_state["PLAYER"])
+        if now_s - combo["last_landing_time"] <= config.COMBO_TIMEOUT_SECONDS:
+            combo["streak"] += 1
+            streak_points = config.COMBO_STREAK_BONUS_PTS * (combo["streak"] - 1)
+            rewards.evaluate_action(
+                "COMBO_STREAK", aircraft.flight_id,
+                f"{actor} touchdown streak x{combo['streak']}",
+                actor=actor, points_override=streak_points,
+            )
+            if actor == "PLAYER" and streak_points > 0:
+                self.renderer.add_floating_text(f"COMBO x{combo['streak']}! +{streak_points}", aircraft.x, aircraft.y - 42, (255, 215, 65))
+        else:
+            combo["streak"] = 1
+        combo["last_landing_time"] = now_s
+
+        if actor == "PLAYER" and aircraft.timely_player_decision:
+            rewards.evaluate_action("TIMELY_PLAYER_DECISION", aircraft.flight_id, "Player cleared aircraft within decision window", actor=actor)
+        if actor == "PLAYER" and aircraft.followed_ai_recommendation:
+            rewards.evaluate_action("AI_SYNERGY_BONUS", aircraft.flight_id, "Player followed AI recommendation and completed landing", actor=actor)
+
+        rewards.evaluate_action("TOUCHDOWN_REWARD", aircraft.flight_id, "Touchdown bonus", actor=actor)
+
+        if actor == "AI":
+            rewards.ai_rescue_count += 1
+            self.renderer.add_floating_text(f"AI RESCUE: {aircraft.flight_id} SAFE", aircraft.x, aircraft.y - 24, config.COLOR_CYAN)
+        else:
+            gained = rewards.cumulative_reward - score_before
+            self.renderer.add_floating_text(
+                f"{aircraft.flight_id} LANDED!  +{gained} PTS",
+                aircraft.x, aircraft.y - 20, config.COLOR_PRIMARY_GREEN,
+            )
+
     def _trigger_crash_modal(self, crashed_ac: Aircraft):
         self.sound.play("warning")
         self.has_active_session = False
-        self.agent.reward_system.evaluate_action("UNSAFE_DECISION", crashed_ac.flight_id, crashed_ac.crash_reason)
+        crash_actor = self.agent.score_actor_for_aircraft(crashed_ac)
+        self.agent.reward_system.evaluate_action("UNSAFE_DECISION", crashed_ac.flight_id, crashed_ac.crash_reason, actor=crash_actor)
         score = self.agent.reward_system.cumulative_reward
         self.db_logger.log_level_history(
             self.level_mgr.current_level, "CRASHED", score,
@@ -461,6 +530,8 @@ class SkyATCGame:
             "score": score,
             "landings": len(self.airbase.flight_history),
             "emergencies": self.agent.stats["emergencies_handled"],
+            "ai_score": self.agent.reward_system.ai_cumulative_reward,
+            "ai_rescues": self.agent.reward_system.ai_rescue_count,
             "breakdown": self.agent.reward_system.get_breakdown(),
         }
         self._rebuild_buttons()
@@ -486,6 +557,8 @@ class SkyATCGame:
             "score": score,
             "landings": landed,
             "emergencies": emerg,
+            "ai_score": self.agent.reward_system.ai_cumulative_reward,
+            "ai_rescues": self.agent.reward_system.ai_rescue_count,
             "breakdown": self.agent.reward_system.get_breakdown(),
         }
         self._rebuild_buttons()
@@ -548,8 +621,15 @@ class SkyATCGame:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._switch_state(GameState.MAIN_MENU)
 
+            elif self.current_state == GameState.SIMULATION and self.modal_state and self.modal_state.get("type") == "TUTORIAL":
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    self._advance_tutorial()
+
             elif self.current_state == GameState.SIMULATION and not self.modal_state:
                 if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F1:
+                        self._show_tutorial()
+                        continue
                     if event.key == pygame.K_p:
                         self._toggle_pause()
                         continue

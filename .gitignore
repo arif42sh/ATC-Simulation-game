@@ -16,3 +16,5 @@ exports/*.csv
 build/
 
 .superpowers/
+.vscode/
+*.pdf

@@ -51,6 +51,8 @@ def run_headless_evaluation():
     airbase = Airbase(level_id=1)
     event_mgr = EventManager(airbase)
     agent = ATCAgent(airbase, db_logger)
+    # Headless runs are AI-only benchmarks; the playable game defaults to emergency rescue only.
+    agent.full_auto_takeover = True
 
     scenarios = [
         "normal_landing",
@@ -78,7 +80,7 @@ def run_headless_evaluation():
             airbase.update(1.0)
             agent.step(1.0)
 
-        lvl_score = agent.reward_system.cumulative_reward
+        lvl_score = agent.reward_system.ai_cumulative_reward
         total_score += lvl_score
         status = "CRASH" if airbase.crashed_aircraft else "PASS"
         print(f"{event_mgr.active_scenario_name:<48} | {len(airbase.runways):<7} | {lvl_score:+6d}pts | {status}")

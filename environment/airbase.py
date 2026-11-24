@@ -232,7 +232,12 @@ class Airbase:
         aircraft.return_to_holding_orbit()
         return True
 
-    def update(self, dt: float) -> Optional[Aircraft]:
+    def update(
+        self,
+        dt: float,
+        decision_dt: Optional[float] = None,
+        decision_flight_id: Optional[str] = None,
+    ) -> Optional[Aircraft]:
         """
         Steps runway timers, aircraft kinematics, collision/fuel crash detection.
         Returns the crashed Aircraft if a fatal failure occurs, else None.
@@ -240,8 +245,27 @@ class Airbase:
         for runway in self.runways.values():
             runway.update(dt)
 
+        pending_ranked = self.get_ranked_pending_aircraft()
+        available_runways = self.get_available_runways()
+        if decision_flight_id:
+            candidate = self.get_aircraft(decision_flight_id)
+            active_decision_aircraft = candidate if (
+                candidate
+                and candidate.status == FlightStatus.HOLDING
+                and any(rwy.supports_aircraft(candidate.min_runway_length_m) for rwy in available_runways)
+            ) else None
+        else:
+            active_decision_aircraft = next((
+                ac for ac in pending_ranked
+                if any(rwy.supports_aircraft(ac.min_runway_length_m) for rwy in available_runways)
+            ), None)
+
         for ac in self.aircraft_fleet:
-            ac.update(dt)
+            ac.update(
+                dt,
+                advance_decision_timer=(ac is active_decision_aircraft),
+                decision_timer_dt=dt if decision_dt is None else decision_dt,
+            )
             if ac.status == FlightStatus.CRASHED and self.crashed_aircraft is None:
                 self.crashed_aircraft = ac
                 if ac.assigned_runway and ac.assigned_runway in self.runways:

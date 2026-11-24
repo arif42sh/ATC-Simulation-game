@@ -55,9 +55,10 @@ COMBO_TIMEOUT_SECONDS = 14.0
 AI_SYNERGY_BONUS_PTS = 30
 TOUCHDOWN_PTS = 100
 COMBO_STREAK_BONUS_PTS = 50
+TIMELY_PLAYER_DECISION_PTS = 20
 
-# 30-Second Human-in-the-Loop (HITL) Decision Window
-HITL_TIMEOUT_SECONDS = float(os.getenv("HITL_TIMEOUT_SECONDS", "30.0"))
+# 20-Second Human-in-the-Loop (HITL) Decision Window
+HITL_TIMEOUT_SECONDS = float(os.getenv("HITL_TIMEOUT_SECONDS", "20.0"))
 
 # -----------------------------------------------------------------------------
 # Game States (4 Primary Screens)
@@ -306,6 +307,8 @@ REWARDS: Dict[str, int] = {
     "AI_SYNERGY_BONUS": AI_SYNERGY_BONUS_PTS,
     "TOUCHDOWN_REWARD": TOUCHDOWN_PTS,
     "COMBO_STREAK": COMBO_STREAK_BONUS_PTS,
+    "TIMELY_PLAYER_DECISION": TIMELY_PLAYER_DECISION_PTS,
+    "MISSED_DECISION": -10,
 }
 
 # -----------------------------------------------------------------------------

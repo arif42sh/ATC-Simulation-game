@@ -98,16 +98,22 @@ class DisplayRenderer:
         self._build_terrain_cache()
 
     def _build_terrain_cache(self):
-        """Pre-renders checkered green grass & topographic contour curves for 60 FPS performance."""
+        """Build a subdued radar-map background that keeps aircraft and runways prominent."""
         surf = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT))
-        tile = 48
+        surf.fill((49, 82, 48))
+        tile = 96
         for gx in range(0, config.WINDOW_WIDTH, tile):
             for gy in range(0, config.WINDOW_HEIGHT, tile):
-                even = ((gx // tile) + (gy // tile)) % 2 == 0
-                col = config.COLOR_GRASS_LIGHT if even else config.COLOR_GRASS_DARK
-                pygame.draw.rect(surf, col, (gx, gy, tile, tile))
+                if ((gx // tile) + (gy // tile)) % 2 == 0:
+                    pygame.draw.rect(surf, (51, 85, 50), (gx, gy, tile, tile))
 
-        # Topographic contour curves (subtle ambient hills)
+        # Fine, low-contrast map grid instead of a high-contrast checkerboard.
+        grid = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        for gx in range(0, config.WINDOW_WIDTH, 96):
+            pygame.draw.line(grid, (190, 218, 174, 13), (gx, config.TOP_BAR_HEIGHT), (gx, config.WINDOW_HEIGHT), 1)
+        for gy in range(config.TOP_BAR_HEIGHT, config.WINDOW_HEIGHT, 96):
+            pygame.draw.line(grid, (190, 218, 174, 13), (0, gy), (config.WINDOW_WIDTH, gy), 1)
+        surf.blit(grid, (0, 0))
         self._terrain_cache = surf
 
     def _draw_vector_star(
@@ -155,8 +161,9 @@ class DisplayRenderer:
         extra_text: str = "",
         show_status_box: bool = True,
         star_ratio: float = 0.0,
-        decision_remaining: float = 30.0,
-        decision_initial: float = 30.0,
+        decision_remaining: float = 20.0,
+        decision_initial: float = 20.0,
+        decision_active: bool = True,
         level_id: int = 1,
     ):
         pygame.draw.rect(self.screen, config.COLOR_TOPBAR_BG, (0, 0, config.WINDOW_WIDTH, config.TOP_BAR_HEIGHT))
@@ -209,13 +216,16 @@ class DisplayRenderer:
             out3 = star_gold_hi if star_ratio >= 0.95 else star_dim_out
             self._draw_vector_star(self.screen, bx + bw + 38, by + 6, 7.0, col3, out3)
 
-            # 5. 30s Decision Countdown Timer Badge (X=515)
+            # 5. 20s Decision Countdown Timer Badge (X=515)
             tw, th = 160, 32
             tx, ty = 515, 8
             rem_s = max(0.0, decision_remaining)
             timer_pct = min(1.0, rem_s / max(1.0, decision_initial))
 
-            if rem_s > 10.0:
+            if not decision_active:
+                t_accent = (150, 168, 158)
+                t_bg = (24, 34, 29)
+            elif rem_s > 10.0:
                 t_accent = (45, 215, 160)
                 t_bg = (16, 32, 28)
             elif rem_s > 5.0:
@@ -229,11 +239,11 @@ class DisplayRenderer:
             pygame.draw.rect(self.screen, t_bg, (tx, ty, tw, th), border_radius=6)
             pygame.draw.rect(self.screen, t_accent, (tx, ty, tw, th), 1, border_radius=6)
 
-            t_text = f"30s TIMER: {int(rem_s):02d}s"
+            t_text = f"20s TIMER: {int(rem_s):02d}s" if decision_active else "NO ACTIVE CLEARANCE"
             t_surf = self.font_small.render(t_text, True, t_accent)
             self.screen.blit(t_surf, (tx + (tw - t_surf.get_width()) // 2, ty + 5))
 
-            mini_w = int((tw - 16) * timer_pct)
+            mini_w = int((tw - 16) * timer_pct) if decision_active else 0
             if mini_w > 0:
                 pygame.draw.rect(self.screen, t_accent, (tx + 8, ty + 24, mini_w, 3), border_radius=2)
 
@@ -270,6 +280,174 @@ class DisplayRenderer:
             ai_col = config.COLOR_PRIMARY_GREEN if ai_ready else config.COLOR_CYAN
             self.screen.blit(self.font_tiny.render(ai_txt, True, ai_col), (box.x + 14, box.y + 34))
 
+    def _draw_airfield_scenery(self, airbase: Airbase):
+        """Draws realistic airport landscape: water reservoirs, perimeter roads, and tree clusters (matching Image 1 & 2)."""
+        # 1. West Water Retention Canal / Pond (as seen in Image 1)
+        w_pond_shore = [
+            (200, 260), (250, 245), (290, 270), (300, 340), (280, 410),
+            (240, 430), (190, 390), (180, 320)
+        ]
+        pygame.draw.polygon(self.screen, (182, 168, 134), w_pond_shore)
+        w_pond_water = [
+            (204, 264), (248, 250), (285, 274), (294, 338), (275, 404),
+            (238, 424), (194, 386), (185, 322)
+        ]
+        pygame.draw.polygon(self.screen, (55, 145, 195), w_pond_water)
+        w_pond_deep = [
+            (214, 276), (244, 264), (272, 285), (280, 332), (264, 388),
+            (232, 408), (204, 376), (198, 328)
+        ]
+        pygame.draw.polygon(self.screen, (34, 100, 155), w_pond_deep)
+
+        # 2. Southeast Retention Basin (as seen in Image 1)
+        se_pond_shore = [
+            (970, 530), (1040, 520), (1090, 550), (1110, 610), (1070, 660),
+            (1000, 670), (950, 620), (940, 570)
+        ]
+        pygame.draw.polygon(self.screen, (182, 168, 134), se_pond_shore)
+        se_pond_water = [
+            (975, 535), (1038, 525), (1084, 554), (1103, 608), (1065, 654),
+            (1002, 663), (956, 616), (946, 573)
+        ]
+        pygame.draw.polygon(self.screen, (55, 145, 195), se_pond_water)
+        se_pond_deep = [
+            (986, 546), (1032, 538), (1070, 562), (1086, 604), (1052, 642),
+            (1006, 650), (968, 610), (960, 578)
+        ]
+        pygame.draw.polygon(self.screen, (34, 100, 155), se_pond_deep)
+
+        # 3. Airport Perimeter Service Access Road (as seen in Image 1)
+        road_x = 1140
+        pygame.draw.rect(self.screen, (42, 46, 54), (road_x - 7, 54, 14, 690))
+        pygame.draw.rect(self.screen, (30, 34, 40), (road_x - 7, 54, 14, 690), 1)
+        pygame.draw.rect(self.screen, (42, 46, 54), (860, 135, 280, 12))
+        ry = 60
+        while ry < 740:
+            pygame.draw.line(self.screen, (225, 185, 45), (road_x, ry), (road_x, ry + 12), 1)
+            ry += 24
+
+        # 4. Perimeter Tree Clusters (as seen in Image 1 & 2)
+        tree_spots = [
+            (175, 230, 13), (195, 215, 11), (305, 240, 14), (320, 260, 12),
+            (170, 430, 13), (190, 450, 12), (290, 445, 14), (310, 465, 12),
+            (940, 505, 13), (960, 485, 11), (1115, 525, 14), (1090, 675, 13),
+            (1162, 175, 14), (1162, 255, 13), (1162, 335, 15), (1162, 415, 13), (1162, 495, 14),
+        ]
+        for tx, ty, tr in tree_spots:
+            pygame.draw.circle(self.screen, (20, 34, 24), (tx + 3, ty + 4), tr)
+            pygame.draw.circle(self.screen, (34, 110, 55), (tx, ty), tr)
+            pygame.draw.circle(self.screen, (46, 138, 70), (tx - 2, ty - 2), int(tr * 0.72))
+            pygame.draw.circle(self.screen, (60, 165, 86), (tx - 4, ty - 4), int(tr * 0.38))
+
+    def _draw_taxiway_network(self, airbase: Airbase):
+        """Draws realistic high-speed exit taxiways and taxiway centerlines (matching Image 3 & 2)."""
+        rwy1 = airbase.runways.get("RWY 1")
+        if not rwy1:
+            return
+
+        # Parallel Taxiway Alpha running above RWY 1
+        tax_y = int(rwy1.start_y - 42)
+        tax_x1 = int(rwy1.start_x - 15)
+        tax_x2 = int(rwy1.end_x + 15)
+        tax_w = 14
+
+        # Asphalt base & sand shoulder
+        pygame.draw.rect(self.screen, (178, 164, 130), (tax_x1 - 3, tax_y - tax_w // 2 - 3, tax_x2 - tax_x1 + 6, tax_w + 6), border_radius=3)
+        pygame.draw.rect(self.screen, (38, 42, 50), (tax_x1, tax_y - tax_w // 2, tax_x2 - tax_x1, tax_w), border_radius=2)
+        # Yellow centerline
+        pygame.draw.line(self.screen, (235, 185, 45), (tax_x1 + 8, tax_y), (tax_x2 - 8, tax_y), 2)
+
+        # High-Speed Exit Taxiways (30-degree angled turnoffs, as in Image 3)
+        exits = [
+            (rwy1.start_x + 90, rwy1.start_y, rwy1.start_x + 45, tax_y),      # West exit
+            (rwy1.center_x, rwy1.start_y, rwy1.center_x, tax_y),             # Midfield exit
+            (rwy1.end_x - 90, rwy1.start_y, rwy1.end_x - 45, tax_y),         # East exit
+        ]
+        for ex1, ey1, ex2, ey2 in exits:
+            pygame.draw.line(self.screen, (178, 164, 130), (ex1, ey1), (ex2, ey2), tax_w + 6)
+            pygame.draw.line(self.screen, (38, 42, 50), (ex1, ey1), (ex2, ey2), tax_w)
+            pygame.draw.line(self.screen, (235, 185, 45), (ex1, ey1), (ex2, ey2), 2)
+            # Runway holding point bar (yellow double bar at entrance)
+            hx = int(ex1 * 0.4 + ex2 * 0.6)
+            hy = int(ey1 * 0.4 + ey2 * 0.6)
+            pygame.draw.line(self.screen, (245, 200, 50), (hx - 6, hy - 2), (hx + 6, hy - 2), 2)
+            pygame.draw.line(self.screen, (245, 200, 50), (hx - 6, hy + 2), (hx + 6, hy + 2), 2)
+
+        # If 3 or 4 runways, add high-speed crossover link between RWY 1 and RWY 2
+        rwy2 = airbase.runways.get("RWY 2")
+        if rwy2 and abs(rwy2.heading - 90) < 5:  # Horizontal parallel runway
+            cx = int(rwy1.center_x)
+            pygame.draw.line(self.screen, (178, 164, 130), (cx, rwy1.start_y), (cx, rwy2.start_y), tax_w + 6)
+            pygame.draw.line(self.screen, (38, 42, 50), (cx, rwy1.start_y), (cx, rwy2.start_y), tax_w)
+            pygame.draw.line(self.screen, (235, 185, 45), (cx, rwy1.start_y), (cx, rwy2.start_y), 2)
+
+    def _draw_terminal_complex(self, airbase: Airbase):
+        """Draws passenger terminal building, boarding jet bridges, and docked airliners (matching Image 1 & 3)."""
+        tx, ty, tw, th = 485, 114, 380, 48
+
+        # Concrete Apron Pad for gates
+        apron_rect = pygame.Rect(tx - 35, ty + th - 6, tw + 70, 72)
+        pygame.draw.rect(self.screen, (178, 164, 130), (apron_rect.x - 3, apron_rect.y - 3, apron_rect.w + 6, apron_rect.h + 6), border_radius=4)
+        pygame.draw.rect(self.screen, (76, 84, 96), apron_rect, border_radius=3)
+        pygame.draw.rect(self.screen, (60, 68, 78), apron_rect, 1, border_radius=3)
+
+        # Terminal Building drop shadow & roof
+        pygame.draw.rect(self.screen, (20, 26, 34), (tx + 4, ty + 5, tw, th), border_radius=8)
+        pygame.draw.rect(self.screen, (118, 142, 164), (tx, ty, tw, th), border_radius=8)
+        pygame.draw.rect(self.screen, (68, 88, 108), (tx, ty, tw, th), 2, border_radius=8)
+
+        # Glass Skylights / Solar Panel grid (as in Image 3)
+        for sx in range(tx + 24, tx + tw - 24, 48):
+            panel = pygame.Rect(sx, ty + 10, 36, 28)
+            pygame.draw.rect(self.screen, (32, 65, 96), panel, border_radius=3)
+            pygame.draw.rect(self.screen, (72, 128, 175), panel, 1, border_radius=3)
+            pygame.draw.line(self.screen, (72, 128, 175), (panel.centerx, panel.y), (panel.centerx, panel.bottom), 1)
+
+        # Concourse Title text
+        term_txt = self.font_tiny.render("TERMINAL 1 • PASSENGER CONCOURSE", True, (225, 238, 250))
+        self.screen.blit(term_txt, (tx + (tw - term_txt.get_width()) // 2, ty + 2))
+
+        # 4 Passenger Boarding Gates & Jet Bridges (Jetways)
+        gates = [
+            (tx + 55, "G1"),
+            (tx + 145, "G2"),
+            (tx + 235, "G3"),
+            (tx + 325, "G4"),
+        ]
+        for gx, g_name in gates:
+            # Jet bridge fixed rotunda
+            pygame.draw.circle(self.screen, (195, 202, 212), (gx, ty + th), 6)
+            # Telescopic corridor extending to aircraft door
+            pygame.draw.line(self.screen, (215, 220, 228), (gx, ty + th), (gx + 6, ty + th + 18), 5)
+            pygame.draw.line(self.screen, (50, 56, 66), (gx, ty + th), (gx + 6, ty + th + 18), 1)
+            # Accordion bellows cab head
+            pygame.draw.rect(self.screen, (54, 60, 70), (gx + 3, ty + th + 16, 7, 6), border_radius=1)
+
+            # Aircraft parking box & stand label
+            stand_box = pygame.Rect(gx - 26, ty + th + 12, 52, 48)
+            pygame.draw.rect(self.screen, (190, 165, 45), stand_box, 1, border_radius=3)
+            pygame.draw.line(self.screen, (235, 185, 45), (gx, ty + th + 12), (gx, ty + th + 40), 2)
+            pygame.draw.line(self.screen, (235, 185, 45), (gx - 10, ty + th + 32), (gx + 10, ty + th + 32), 2)
+
+            lbl = self.font_tiny.render(g_name, True, (235, 205, 75))
+            self.screen.blit(lbl, (gx - lbl.get_width() // 2, ty + th + 46))
+
+            # Docked Airliner parked at gate (facing South, 180 degrees)
+            self._draw_plane_sprite(gx, ty + th + 28, heading_deg=180.0, color=(240, 246, 252), scale=0.82)
+
+    def _draw_control_tower(self, cx: float, cy: float):
+        """Draws authentic airport observation control tower with radar dome (matching Image 2)."""
+        pygame.draw.circle(self.screen, (18, 24, 32), (int(cx + 4), int(cy + 5)), 14)
+        pygame.draw.circle(self.screen, (225, 230, 238), (int(cx), int(cy)), 12)
+        pygame.draw.circle(self.screen, (165, 175, 188), (int(cx), int(cy)), 12, 1)
+        pygame.draw.circle(self.screen, (34, 68, 98), (int(cx), int(cy)), 8)
+        pygame.draw.circle(self.screen, (75, 145, 195), (int(cx), int(cy)), 8, 1)
+        pygame.draw.circle(self.screen, (248, 250, 252), (int(cx), int(cy)), 4)
+        if math.sin(self.pulse_phase * 3.0) > 0.3:
+            pygame.draw.circle(self.screen, (255, 60, 60), (int(cx), int(cy)), 2)
+        lbl = self.font_tiny.render("TWR", True, (210, 225, 240))
+        self.screen.blit(lbl, (int(cx - lbl.get_width() // 2), int(cy + 15)))
+
     def _draw_airbase_tarmac_and_runways(
         self,
         airbase: Airbase,
@@ -277,7 +455,11 @@ class DisplayRenderer:
         drag_valid: bool = True,
         active_ac: Optional[Aircraft] = None,
     ):
-        """Draws the concrete airbase pad, Helipad (H), and 2-4 active runways."""
+        """Draws the complete commercial airport layout: ponds, roads, taxiways, terminal, tower, and runways."""
+        # 1. Natural airfield landscape (water reservoirs, access road, perimeter trees)
+        self._draw_airfield_scenery(airbase)
+
+        # 2. Main concrete airbase apron
         rwy_count = len(airbase.runways)
         if rwy_count >= 4:
             base_pts = [
@@ -285,40 +467,33 @@ class DisplayRenderer:
                 (655, 380), (645, 505), (615, 525), (385, 660),
                 (335, 660), (235, 600), (175, 520), (155, 450), (155, 240),
             ]
-            hx, hy, hr, h_ring, h_font = 215 + 200, 420, 28, 22, self.font_title
         elif rwy_count == 3:
             base_pts = [
                 (170, 200), (675, 200), (700, 235), (690, 375),
                 (665, 410), (615, 440), (345, 615), (245, 615),
                 (175, 545), (155, 475), (155, 260),
             ]
-            hx, hy, hr, h_ring, h_font = 215 + 200, 445, 28, 22, self.font_title
         else:
             base_pts = [
                 (175, 195), (655, 195), (680, 225), (680, 420),
                 (375, 600), (205, 580), (175, 490),
             ]
-            hx, hy, hr, h_ring, h_font = 235 + 200, 455, 32, 26, self.font_title
 
         tarmac_pts = [(x + 200, y) for x, y in base_pts]
+        pygame.draw.polygon(self.screen, (178, 164, 130), [(x + 4, y + 5) for x, y in tarmac_pts])
+        pygame.draw.polygon(self.screen, (74, 82, 94), tarmac_pts)
+        pygame.draw.polygon(self.screen, (58, 66, 76), tarmac_pts, 2)
 
-        pygame.draw.polygon(self.screen, config.COLOR_TARMAC_BORDER, [(x + 4, y + 5) for x, y in tarmac_pts])
-        pygame.draw.polygon(self.screen, config.COLOR_TARMAC, tarmac_pts)
-        pygame.draw.polygon(self.screen, config.COLOR_TARMAC_BORDER, tarmac_pts, 2)
+        # 3. High-Speed Exit Taxiway Network
+        self._draw_taxiway_network(airbase)
 
-        # Terminal Apron Parking Stand (STAND 1)
-        stand_rect = pygame.Rect(hx - 28, hy - 26, 56, 52)
-        pygame.draw.rect(self.screen, (68, 66, 62), stand_rect, border_radius=4)
-        pygame.draw.rect(self.screen, (190, 165, 55), stand_rect, 2, border_radius=4)
-        # Taxi lead-in yellow line
-        pygame.draw.line(self.screen, (215, 185, 45), (hx, hy - 26), (hx, hy + 14), 2)
-        # Stop bar line
-        pygame.draw.line(self.screen, (215, 185, 45), (hx - 12, hy + 6), (hx + 12, hy + 6), 3)
-        # STAND 1 label
-        s_lbl = self.font_tiny.render("STAND 1", True, (220, 195, 80))
-        self.screen.blit(s_lbl, (hx - s_lbl.get_width() // 2, hy + 12))
+        # 4. Modern Passenger Terminal Complex with Jetways & Docked Airliners
+        self._draw_terminal_complex(airbase)
 
-        # Draw each runway cleanly along its angle
+        # 5. Air Traffic Control Tower
+        self._draw_control_tower(395, 205)
+
+        # 6. Draw each runway cleanly along its angle with shoulders, skid marks & markings
         for rwy in airbase.runways.values():
             self._draw_single_runway(
                 rwy,
@@ -334,7 +509,7 @@ class DisplayRenderer:
         drag_valid: bool = True,
         active_ac: Optional[Aircraft] = None,
     ):
-        """Draws an asphalt runway strip with markings, threshold keys, and status badge."""
+        """Draws a commercial asphalt runway strip with sandy shoulders, tire skid marks, ICAO markings, and status badge."""
         half_w = 18.0
         nx, ny = -rwy.uy * half_w, rwy.ux * half_w
         corners = [
@@ -344,6 +519,18 @@ class DisplayRenderer:
             (rwy.start_x - nx, rwy.start_y - ny),
         ]
 
+        # 1. Sandy / Gravel Runway Shoulder (Runway Safety Area - RSA, as in Image 1, 2, 3)
+        sh_pad = 8.0
+        sh_nx, sh_ny = -rwy.uy * (half_w + sh_pad), rwy.ux * (half_w + sh_pad)
+        sh_corners = [
+            (rwy.start_x - rwy.ux * 12.0 + sh_nx, rwy.start_y - rwy.uy * 12.0 + sh_ny),
+            (rwy.end_x + rwy.ux * 12.0 + sh_nx, rwy.end_y + rwy.uy * 12.0 + sh_ny),
+            (rwy.end_x + rwy.ux * 12.0 - sh_nx, rwy.end_y + rwy.uy * 12.0 - sh_ny),
+            (rwy.start_x - rwy.ux * 12.0 - sh_nx, rwy.start_y - rwy.uy * 12.0 - sh_ny),
+        ]
+        pygame.draw.polygon(self.screen, (184, 170, 134), sh_corners)
+        pygame.draw.polygon(self.screen, (158, 144, 110), sh_corners, 1)
+
         compat_state: Optional[bool] = None
         if active_ac is not None and rwy.status == RunwayStatus.AVAILABLE:
             compat_state = rwy.supports_aircraft(active_ac.min_runway_length_m)
@@ -352,52 +539,84 @@ class DisplayRenderer:
         if is_hovered or compat_state is not None:
             if is_hovered:
                 glow_col = config.COLOR_PRIMARY_GREEN if drag_valid else config.COLOR_CRITICAL_RED
-                border_w, pad = 3, 5.0
+                border_w, pad = 3, 4.0
             elif compat_state:
                 glow_col = config.COLOR_PRIMARY_GREEN
-                border_w, pad = 2, 4.0
+                border_w, pad = 2, 3.0
             else:
                 glow_col = config.COLOR_WARN_AMBER
-                border_w, pad = 2, 4.0
+                border_w, pad = 2, 3.0
 
-            g_nx, g_ny = -rwy.uy * (half_w + pad), rwy.ux * (half_w + pad)
+            g_nx, g_ny = -rwy.uy * (half_w + sh_pad + pad), rwy.ux * (half_w + sh_pad + pad)
             g_corners = [
-                (rwy.start_x + g_nx, rwy.start_y + g_ny),
-                (rwy.end_x + g_nx, rwy.end_y + g_ny),
-                (rwy.end_x - g_nx, rwy.end_y - g_ny),
-                (rwy.start_x - g_nx, rwy.start_y - g_ny),
+                (rwy.start_x - rwy.ux * 14.0 + g_nx, rwy.start_y - rwy.uy * 14.0 + g_ny),
+                (rwy.end_x + rwy.ux * 14.0 + g_nx, rwy.end_y + rwy.uy * 14.0 + g_ny),
+                (rwy.end_x + rwy.ux * 14.0 - g_nx, rwy.end_y + rwy.uy * 14.0 - g_ny),
+                (rwy.start_x - rwy.ux * 14.0 - g_nx, rwy.start_y - rwy.uy * 14.0 - g_ny),
             ]
             pygame.draw.polygon(self.screen, glow_col, g_corners, border_w)
 
-        pygame.draw.polygon(self.screen, config.COLOR_RUNWAY_ASPHALT, corners)
+        # 2. Main Asphalt Runway Pavement
+        pygame.draw.polygon(self.screen, (28, 32, 38), corners)
         pygame.draw.polygon(self.screen, (210, 210, 200), corners, 1)
 
-        # Threshold piano keys (both ends)
+        # 3. Touchdown Zone Rubber Tire Skid Marks (crucial feature from Image 2 & 3)
+        for base_t, dir_sign in ((28.0, 1.0), (rwy.pixel_length - 28.0, -1.0)):
+            for lateral_offset in (-3.6, -1.8, 0.0, 1.8, 3.6):
+                skid_len = 85.0
+                p1_x = rwy.start_x + rwy.ux * base_t - rwy.uy * lateral_offset
+                p1_y = rwy.start_y + rwy.uy * base_t + rwy.ux * lateral_offset
+                p2_x = p1_x + rwy.ux * (skid_len * dir_sign)
+                p2_y = p1_y + rwy.uy * (skid_len * dir_sign)
+                pygame.draw.line(self.screen, (16, 20, 26), (p1_x, p1_y), (p2_x, p2_y), 2)
+            p1_cx = rwy.start_x + rwy.ux * (base_t + 15.0 * dir_sign)
+            p1_cy = rwy.start_y + rwy.uy * (base_t + 15.0 * dir_sign)
+            p2_cx = p1_cx + rwy.ux * (50.0 * dir_sign)
+            p2_cy = p1_cy + rwy.uy * (50.0 * dir_sign)
+            pygame.draw.line(self.screen, (12, 15, 20), (p1_cx, p1_cy), (p2_cx, p2_cy), 3)
+
+        # 4. Threshold piano keys (both ends, 8 keys each as in Image 1 & 2)
         for end_t in (8.0, rwy.pixel_length - 18.0):
-            for offset in (-10.0, -4.0, 2.0, 8.0):
+            for offset in (-12.0, -9.0, -6.0, -3.0, 3.0, 6.0, 9.0, 12.0):
                 px = rwy.start_x + rwy.ux * end_t - rwy.uy * offset
                 py = rwy.start_y + rwy.uy * end_t + rwy.ux * offset
                 qx = px + rwy.ux * 10.0
                 qy = py + rwy.uy * 10.0
                 pygame.draw.line(self.screen, config.COLOR_RUNWAY_MARKING, (px, py), (qx, qy), 2)
 
-        # Runway identification numbers on asphalt past threshold keys
+        # 5. Runway Designation Numbers on asphalt
         rwy_num = rwy.id.replace("RWY ", "").strip()
         num_str = f"0{rwy_num}" if len(rwy_num) == 1 else rwy_num
         num_surf = self.font_mono_sm.render(num_str, True, config.COLOR_RUNWAY_MARKING)
         angle_deg = math.degrees(math.atan2(-rwy.uy, rwy.ux))
         rot_surf = pygame.transform.rotate(num_surf, angle_deg)
-        nx_pos = rwy.start_x + rwy.ux * 28.0
-        ny_pos = rwy.start_y + rwy.uy * 28.0
+        nx_pos = rwy.start_x + rwy.ux * 26.0
+        ny_pos = rwy.start_y + rwy.uy * 26.0
         self.screen.blit(rot_surf, rot_surf.get_rect(center=(int(nx_pos), int(ny_pos))))
 
-        # Centerline dashes
-        t = 42.0
-        while t < rwy.pixel_length - 28.0:
+        # 6. Thick White Aiming Point Blocks (ICAO standard, as in Image 1 & 2)
+        for aim_t in (68.0, rwy.pixel_length - 68.0):
+            for aim_offset in (-7.0, 7.0):
+                ax = rwy.start_x + rwy.ux * aim_t - rwy.uy * aim_offset
+                ay = rwy.start_y + rwy.uy * aim_t + rwy.ux * aim_offset
+                bx = ax + rwy.ux * 24.0
+                by = ay + rwy.uy * 24.0
+                pygame.draw.line(self.screen, config.COLOR_RUNWAY_MARKING, (ax, ay), (bx, by), 4)
+
+        # 7. Touchdown Zone Distance Bars (Pairs of stripes)
+        for tdz_t in (46.0, rwy.pixel_length - 46.0):
+            for tdz_off in (-9.0, -5.0, 5.0, 9.0):
+                tx = rwy.start_x + rwy.ux * tdz_t - rwy.uy * tdz_off
+                ty = rwy.start_y + rwy.uy * tdz_t + rwy.ux * tdz_off
+                pygame.draw.line(self.screen, config.COLOR_RUNWAY_MARKING, (tx, ty), (tx + rwy.ux * 12.0, ty + rwy.uy * 12.0), 2)
+
+        # 8. Centerline dashes (between touchdown zones)
+        t = 118.0
+        while t < rwy.pixel_length - 118.0:
             p1 = (rwy.start_x + rwy.ux * t, rwy.start_y + rwy.uy * t)
-            p2 = (rwy.start_x + rwy.ux * (t + 14.0), rwy.start_y + rwy.uy * (t + 14.0))
+            p2 = (rwy.start_x + rwy.ux * (t + 16.0), rwy.start_y + rwy.uy * (t + 16.0))
             pygame.draw.line(self.screen, config.COLOR_RUNWAY_MARKING, p1, p2, 2)
-            t += 26.0
+            t += 28.0
 
         # If Unavailable / Maintenance, draw hazard stripes across runway
         if rwy.status in (RunwayStatus.UNAVAILABLE, RunwayStatus.UNDER_MAINTENANCE):
@@ -432,8 +651,8 @@ class DisplayRenderer:
         nx, ny = -rwy.uy, rwy.ux
         if ny > 0:
             nx, ny = -nx, -ny
-        cx = rwy.center_x + nx * 24.0
-        cy = rwy.center_y + ny * 24.0
+        cx = rwy.center_x + nx * 26.0
+        cy = rwy.center_y + ny * 26.0
         bx = int(cx - pill_w // 2)
         by = int(cy - pill_h // 2)
         pill = pygame.Rect(bx, by, pill_w, pill_h)
@@ -533,6 +752,58 @@ class DisplayRenderer:
             py = int(y1 + t * (y2 - y1))
             pygame.draw.circle(self.screen, color, (px, py), radius)
 
+    def _draw_curved_drag_route(self, aircraft: Aircraft, runway: Any, drop_point: Tuple[int, int], color: Tuple[int, int, int]):
+        """Previews a curved arrival leg that straightens onto the selected runway threshold."""
+        threshold = runway.get_closest_threshold(drop_point[0], drop_point[1])
+        p0 = (float(aircraft.x), float(aircraft.y))
+        p3 = threshold["approach_pos"]
+        p_end = threshold["start"]
+        ux, uy = float(threshold["ux"]), float(threshold["uy"])
+        dx, dy = p3[0] - p0[0], p3[1] - p0[1]
+        distance = math.hypot(dx, dy)
+
+        if distance < 12.0:
+            self._draw_flow_approach_path(p0, p_end, color, spacing=26.0)
+        else:
+            # Bend the arrival leg away from the runway center, then line up with final.
+            nx, ny = -uy, ux
+            side = (p0[0] - p3[0]) * nx + (p0[1] - p3[1]) * ny
+            if abs(side) < 8.0:
+                side = 1.0
+            bend = min(150.0, distance * 0.30) * (1.0 if side > 0 else -1.0)
+            control = ((p0[0] + p3[0]) * 0.5 + nx * bend, (p0[1] + p3[1]) * 0.5 + ny * bend)
+            points = []
+            for index in range(33):
+                t = index / 32.0
+                omt = 1.0 - t
+                x = omt * omt * p0[0] + 2.0 * omt * t * control[0] + t * t * p3[0]
+                y = omt * omt * p0[1] + 2.0 * omt * t * control[1] + t * t * p3[1]
+                points.append((x, y))
+
+            dim_col = tuple(int(c * 0.22 + b * 0.78) for c, b in zip(color, (49, 82, 48)))
+            flow_col = tuple(int(c * 0.72 + b * 0.28) for c, b in zip(color, (49, 82, 48)))
+            pygame.draw.lines(self.screen, dim_col, False, points, 1)
+
+            next_mark = (self.pulse_phase * 26.0) % 28.0
+            walked = 0.0
+            for index in range(1, len(points) - 1):
+                prev_pt, center, next_pt = points[index - 1], points[index], points[index + 1]
+                walked += math.hypot(center[0] - prev_pt[0], center[1] - prev_pt[1])
+                if walked < next_mark:
+                    continue
+                tangent_len = math.hypot(next_pt[0] - prev_pt[0], next_pt[1] - prev_pt[1]) or 1.0
+                tx, ty = (next_pt[0] - prev_pt[0]) / tangent_len, (next_pt[1] - prev_pt[1]) / tangent_len
+                px, py = -ty, tx
+                tip = (center[0] + tx * 5.0, center[1] + ty * 5.0)
+                left = (center[0] - tx * 4.0 + px * 3.5, center[1] - ty * 4.0 + py * 3.5)
+                right = (center[0] - tx * 4.0 - px * 3.5, center[1] - ty * 4.0 - py * 3.5)
+                pygame.draw.lines(self.screen, flow_col, False, [left, tip, right], 1)
+                next_mark += 28.0
+
+            self._draw_flow_approach_path(p3, p_end, color, spacing=26.0)
+
+        pygame.draw.circle(self.screen, color, (int(p_end[0]), int(p_end[1])), 8, 2)
+
     def _draw_flow_approach_path(
         self,
         p1: Tuple[float, float],
@@ -552,11 +823,13 @@ class DisplayRenderer:
         nx, ny = -uy, ux
 
         # Center trackline in muted tone
-        dim_col = (color[0] // 3, color[1] // 3, color[2] // 3)
+        dim_col = tuple(int(c * 0.22 + b * 0.78) for c, b in zip(color, (49, 82, 48)))
         pygame.draw.line(self.screen, dim_col, (int(x1), int(y1)), (int(x2), int(y2)), 1)
 
         # Marching offset towards destination
+        spacing = max(spacing, 26.0)
         flow_offset = (self.pulse_phase * 26.0) % spacing
+        flow_col = tuple(int(c * 0.72 + b * 0.28) for c, b in zip(color, (49, 82, 48)))
         d = flow_offset
         while d < dist - 14.0:
             cx = x1 + ux * d
@@ -565,7 +838,7 @@ class DisplayRenderer:
             w1y = cy - uy * 5.0 + ny * 4.0
             w2x = cx - ux * 5.0 - nx * 4.0
             w2y = cy - uy * 5.0 - ny * 4.0
-            pygame.draw.lines(self.screen, color, False, [(w1x, w1y), (cx, cy), (w2x, w2y)], 2)
+            pygame.draw.lines(self.screen, flow_col, False, [(w1x, w1y), (cx, cy), (w2x, w2y)], 1)
             d += spacing
 
     # =========================================================================
@@ -765,8 +1038,13 @@ class DisplayRenderer:
             src_ac = drag_state["aircraft"]
             mx, my = drag_state["mouse_pos"]
             line_col = config.COLOR_PRIMARY_GREEN if drag_valid else config.COLOR_CRITICAL_RED
-            self._draw_dotted_line((src_ac.x, src_ac.y), (mx, my), line_col, spacing=7)
-            pygame.draw.circle(self.screen, line_col, (mx, my), 7, 2)
+            runway_id = drag_state.get("hovered_runway")
+            target_runway = airbase.runways.get(runway_id) if runway_id else None
+            if target_runway:
+                self._draw_curved_drag_route(src_ac, target_runway, (mx, my), line_col)
+            else:
+                self._draw_dotted_line((src_ac.x, src_ac.y), (mx, my), line_col, spacing=7)
+                pygame.draw.circle(self.screen, line_col, (mx, my), 7, 2)
             if drag_state.get("reason"):
                 tip = self.font_tiny.render(drag_state["reason"], True, line_col)
                 tip_w = tip.get_width() + 10
@@ -783,6 +1061,8 @@ class DisplayRenderer:
         for p in self.particles:
             p.draw(self.screen)
 
+        # Place labels with collision avoidance so busy scenes remain readable.
+        self._aircraft_label_rects = []
         # Aircraft sprites + emergency circles + fuel % badges
         for ac in airbase.aircraft_fleet:
             if not ac.is_active_in_airspace():
@@ -798,14 +1078,14 @@ class DisplayRenderer:
         max_pot = max(100, tot_ac * 150)
         s_ratio = min(1.0, max(0.0, agent.reward_system.cumulative_reward / max_pot))
 
-        pending_ranked = airbase.get_ranked_pending_aircraft()
-        top_p = pending_ranked[0] if pending_ranked else None
-        d_rem = top_p.hitl_decision_timer if top_p else config.HITL_TIMEOUT_SECONDS
-        d_init = top_p.hitl_initial_timer if top_p else config.HITL_TIMEOUT_SECONDS
+        active_target = agent.get_co_pilot_target() if hasattr(agent, "get_co_pilot_target") else None
+        active_aircraft = active_target[0] if active_target else None
+        d_rem = active_aircraft.hitl_decision_timer if active_aircraft else config.HITL_TIMEOUT_SECONDS
+        d_init = active_aircraft.hitl_initial_timer if active_aircraft else config.HITL_TIMEOUT_SECONDS
 
         self._draw_top_hud_bar(
             landed_count=len(airbase.flight_history),
-            score_label="SCORE",
+            score_label="YOU",
             score_val=agent.reward_system.cumulative_reward,
             mysql_ok=True,
             ai_ready=True,
@@ -814,15 +1094,22 @@ class DisplayRenderer:
             star_ratio=s_ratio,
             decision_remaining=d_rem,
             decision_initial=d_init,
+            decision_active=active_target is not None,
             level_id=level_mgr.current_level,
         )
 
         # Unified Comms/Event Alert Banner (strictly 1 banner at a time in the clear corridor)
-        co_target = agent.get_co_pilot_target() if (not drag_state and hasattr(agent, "get_co_pilot_target")) else None
+        co_target = active_target if (not drag_state and hasattr(agent, "get_co_pilot_target")) else None
         if co_target and co_target[0].status == FlightStatus.HOLDING:
             self._draw_radio_comms_bubble(co_target)
         elif level_mgr.active_banner:
             self._draw_event_banner(level_mgr.active_banner)
+
+        hint = self.font_small.render("SPACE  Clear AI recommendation     Drag a plane to a runway     F1  Help", True, (207, 222, 207))
+        hint_box = pygame.Rect(0, config.WINDOW_HEIGHT - 30, config.WINDOW_WIDTH, 30)
+        pygame.draw.rect(self.screen, (19, 33, 27), hint_box)
+        pygame.draw.line(self.screen, (73, 111, 73), hint_box.topleft, hint_box.topright, 1)
+        self.screen.blit(hint, hint.get_rect(center=hint_box.center))
 
         # Optional Modal Overlay (Pause / Level Complete / Crash)
         if modal_state:
@@ -870,11 +1157,12 @@ class DisplayRenderer:
             min(255, int(220 + 35 * pulse)),
             min(255, int(130 + 125 * pulse)),
         )
-        target_pos = (rwy.start_x, rwy.start_y)
-        self._draw_flow_approach_path((ac.x, ac.y), target_pos, guide_col)
+        # Match the player's drag preview: arc onto the closest runway threshold,
+        # then straighten for the final approach.
+        self._draw_curved_drag_route(ac, rwy, (int(ac.x), int(ac.y)), guide_col)
 
-        # 3. Soft glowing landing target reticle directly on the runway entrance
-        self._draw_hud_reticle(rwy.start_x, rwy.start_y, size=int(14 + 3 * pulse), color=guide_col, arm_len=5)
+        threshold = rwy.get_closest_threshold(ac.x, ac.y)["start"]
+        self._draw_hud_reticle(threshold[0], threshold[1], size=int(14 + 3 * pulse), color=guide_col, arm_len=5)
 
     def _draw_radio_comms_bubble(self, co_pilot_target: Optional[Tuple[Any, Any]]):
         if not co_pilot_target:
@@ -884,17 +1172,8 @@ class DisplayRenderer:
             return
 
         is_em = ac.is_emergency()
-        bw, bh = 440, 28
-        bx = (config.WINDOW_WIDTH - bw) // 2
-        by = 54
-
         bg_col = (56, 14, 18, 230) if is_em else (16, 28, 44, 230)
         border_col = config.COLOR_CRITICAL_RED if is_em else (255, 215, 65)
-
-        comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
-        comm_surf.fill(bg_col)
-        self.screen.blit(comm_surf, (bx, by))
-        pygame.draw.rect(self.screen, border_col, (bx, by, bw, bh), 1, border_radius=5)
 
         if is_em:
             msg = f"MAYDAY! {ac.flight_id} ({int(ac.fuel_level)}% FUEL): Land {rwy.id} [SPACE]"
@@ -902,7 +1181,14 @@ class DisplayRenderer:
             msg = f"TOWER: {ac.flight_id} ({ac.model}) -> {rwy.id} [Press SPACE]"
 
         lbl = self.font_tiny.render(msg, True, config.COLOR_WHITE)
-        self.screen.blit(lbl, (bx + (bw - lbl.get_width()) // 2, by + 6))
+        bw, bh = max(250, min(360, lbl.get_width() + 28)), 26
+        bx = (config.WINDOW_WIDTH - bw) // 2
+        by = 54
+        comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        comm_surf.fill(bg_col)
+        self.screen.blit(comm_surf, (bx, by))
+        pygame.draw.rect(self.screen, border_col, (bx, by, bw, bh), 1, border_radius=5)
+        self.screen.blit(lbl, lbl.get_rect(center=(bx + bw // 2, by + bh // 2)))
 
     def _draw_co_pilot_guide(self, co_pilot_target: Optional[Tuple[Any, Any]]):
         self._draw_ai_spotlight(co_pilot_target)
@@ -935,68 +1221,63 @@ class DisplayRenderer:
         scale = 1.25 if ac.aircraft_size == "HEAVY" else (0.95 if ac.aircraft_size == "SMALL" else 1.1)
         self._draw_plane_sprite(ac.x, ac.y, ac.heading, plane_col, scale=scale)
 
-        # Minimal sleek callsign tag with fuel % (centered underneath)
+        # Compact labels use short emergency names and avoid neighboring labels.
         sym = self._get_emergency_symbol(ac)
+        short_sym = {"FUEL": "FUEL", "ENGINE": "ENGINE", "MEDICAL": "MED", "BIRD_STRIKE": "BIRD", "EMERGENCY": "ALERT"}.get(sym, "")
         if is_em:
-            tag_txt = f"{ac.flight_id} • {int(ac.fuel_level)}% [{sym or 'ALERT'}]"
+            tag_txt = f"{ac.flight_id}  {int(ac.fuel_level)}%  {short_sym}"
             tag_col = (255, 120, 120)
             tag_bg = (54, 18, 22)
             tag_border = config.COLOR_CRITICAL_RED
         elif is_selected:
-            tag_txt = f"{ac.flight_id} • {int(ac.fuel_level)}% {ac.model}"
+            tag_txt = f"{ac.flight_id}  {int(ac.fuel_level)}%  {ac.model}"
             tag_col = config.COLOR_CYAN
             tag_bg = (14, 28, 44)
             tag_border = config.COLOR_CYAN
         else:
-            tag_txt = f"{ac.flight_id} • {int(ac.fuel_level)}%"
+            tag_txt = f"{ac.flight_id}  {int(ac.fuel_level)}%"
             tag_col = fuel_col if ac.fuel_level < 50.0 else config.COLOR_WHITE
             tag_bg = (16, 24, 36)
             tag_border = (38, 54, 76)
 
-        lbl = self.font_tiny.render(tag_txt, True, tag_col)
-        bg_w = lbl.get_width() + 10
-        tag_x = ax - bg_w // 2
-        tag_y = ay + 18
-        if tag_x + bg_w > config.CANVAS_WIDTH - 6:
-            tag_x = max(6, ax - 16 - bg_w)
-        elif tag_x < 6:
-            tag_x = 6
-        tag_y = max(config.TOP_BAR_HEIGHT + 4, min(config.WINDOW_HEIGHT - 24, tag_y))
-
-        bg = pygame.Rect(tag_x, tag_y, bg_w, 16)
-        pygame.draw.rect(self.screen, tag_bg, bg, border_radius=3)
-        pygame.draw.rect(self.screen, tag_border, bg, 1, border_radius=3)
-        self.screen.blit(lbl, (bg.x + 5, bg.y + 1))
+        lbl = self.font_small.render(tag_txt, True, tag_col)
+        bg_w, bg_h = lbl.get_width() + 12, 19
+        candidates = [
+            pygame.Rect(ax - bg_w // 2, ay + 23, bg_w, bg_h),
+            pygame.Rect(ax - bg_w // 2, ay - 25, bg_w, bg_h),
+            pygame.Rect(ax + 22, ay - bg_h // 2, bg_w, bg_h),
+            pygame.Rect(ax - bg_w - 22, ay - bg_h // 2, bg_w, bg_h),
+        ]
+        safe = pygame.Rect(5, config.TOP_BAR_HEIGHT + 8, config.CANVAS_WIDTH - 10, config.WINDOW_HEIGHT - config.TOP_BAR_HEIGHT - 44)
+        candidates = [pygame.Rect(max(safe.left, min(r.x, safe.right-r.w)), max(safe.top, min(r.y, safe.bottom-r.h)), r.w, r.h) for r in candidates]
+        occupied = getattr(self, "_aircraft_label_rects", [])
+        bg = min(candidates, key=lambda r: sum(r.clip(other).w * r.clip(other).h for other in occupied))
+        occupied.append(bg)
+        pygame.draw.rect(self.screen, tag_bg, bg, border_radius=5)
+        pygame.draw.rect(self.screen, tag_border, bg, 1, border_radius=5)
+        self.screen.blit(lbl, (bg.x + 6, bg.y + 2))
 
     def _draw_event_banner(self, banner: Dict[str, Any]):
-        bw, bh = 440, 28
-        bx = (config.WINDOW_WIDTH - bw) // 2
-        by = 54
         b_type = banner.get("type", "NORMAL")
         border = config.COLOR_CRITICAL_RED if b_type == "EMERGENCY" else config.COLOR_CYAN
         bg = (56, 14, 18, 230) if b_type == "EMERGENCY" else (16, 28, 44, 230)
-
+        title = banner.get("title", "")
+        msg = banner.get("message", "")
+        full_txt = f"{title}: {msg}" if title else msg
+        max_width = min(360, config.WINDOW_WIDTH - 32)
+        lbl = self.font_tiny.render(full_txt, True, config.COLOR_WHITE)
+        if lbl.get_width() > max_width - 24:
+            clipped = full_txt
+            while clipped and self.font_tiny.size(clipped + "…")[0] > max_width - 24:
+                clipped = clipped[:-1]
+            lbl = self.font_tiny.render(clipped.rstrip() + "…", True, config.COLOR_WHITE)
+        bw, bh = min(max_width, lbl.get_width() + 24), 26
+        bx, by = (config.WINDOW_WIDTH - bw) // 2, 54
         comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
         comm_surf.fill(bg)
         self.screen.blit(comm_surf, (bx, by))
         pygame.draw.rect(self.screen, border, (bx, by, bw, bh), 1, border_radius=5)
-
-        title = banner.get("title", "")
-        msg = banner.get("message", "")
-        full_txt = f"{title}: {msg}" if title else msg
-        lbl = self.font_tiny.render(full_txt[:55], True, config.COLOR_WHITE)
-        self.screen.blit(lbl, (bx + (bw - lbl.get_width()) // 2, by + 6))
-
-        comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
-        comm_surf.fill(bg)
-        self.screen.blit(comm_surf, (bx, by))
-        pygame.draw.rect(self.screen, border, (bx, by, bw, bh), 1, border_radius=5)
-
-        title = banner.get("title", "")
-        msg = banner.get("message", "")
-        full_txt = f"{title}: {msg}" if title else msg
-        lbl = self.font_tiny.render(full_txt[:55], True, config.COLOR_WHITE)
-        self.screen.blit(lbl, (bx + (bw - lbl.get_width()) // 2, by + 6))
+        self.screen.blit(lbl, lbl.get_rect(center=(bx + bw // 2, by + bh // 2)))
 
     def _render_gameplay_sidebar(
         self,
@@ -1083,7 +1364,7 @@ class DisplayRenderer:
         short_reason = (reason_txt[:46] + "...") if len(reason_txt) > 49 else reason_txt
         self.screen.blit(self.font_tiny.render(f"Reason: {short_reason}", True, (245, 225, 130)), (badge_rect.x + 8, badge_rect.y + 4))
 
-        # 3. 10s DECISION TIMER
+        # 3. 20s DECISION TIMER
         timer_box = pygame.Rect(sx + 16, sy + 458, sw - 32, 62)
         pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, timer_box, border_radius=8)
         pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, timer_box, 1, border_radius=8)
@@ -1093,7 +1374,7 @@ class DisplayRenderer:
         t_max = top_pending.hitl_initial_timer if top_pending else config.HITL_TIMEOUT_SECONDS
         pct = max(0.0, min(1.0, t_rem / max(0.1, t_max)))
 
-        self.screen.blit(self.font_header.render("10s DECISION TIMER", True, config.COLOR_WHITE), (timer_box.x + 95, timer_box.y + 7))
+        self.screen.blit(self.font_header.render("20s DECISION TIMER", True, config.COLOR_WHITE), (timer_box.x + 95, timer_box.y + 7))
         bar_rect = pygame.Rect(timer_box.x + 14, timer_box.y + 32, timer_box.w - 72, 20)
         pygame.draw.rect(self.screen, (34, 48, 68), bar_rect, border_radius=5)
         bar_col = config.COLOR_PRIMARY_GREEN if pct > 0.5 else (config.COLOR_WARN_AMBER if pct > 0.25 else config.COLOR_CRITICAL_RED)
@@ -1125,6 +1406,38 @@ class DisplayRenderer:
         dim.fill((6, 12, 20, 195))
         self.screen.blit(dim, (0, 0))
 
+        if modal.get("type") == "TUTORIAL":
+            mx, my, mw, mh = (config.WINDOW_WIDTH - 760) // 2, (config.WINDOW_HEIGHT - 390) // 2, 760, 390
+            panel = pygame.Rect(mx, my, mw, mh)
+            pygame.draw.rect(self.screen, (17, 29, 39), panel, border_radius=16)
+            pygame.draw.rect(self.screen, (76, 143, 112), panel, 2, border_radius=16)
+
+            steps = [
+                ("1. READ THE RADAR", "Each aircraft shows its callsign and remaining fuel. Red aircraft are in an emergency.\nRunway badges show whether a runway is open, busy, or closed."),
+                ("2. CLEAR A LANDING", "Press SPACE to clear the AI's highlighted recommendation.\nOr drag an aircraft onto an open runway. Click the aircraft, then the runway, also works."),
+                ("3. WATCH THE CLOCK", "You get 20 real seconds for the active recommendation. Timeout penalizes delay; the AI\nrescues only critical-fuel or engine emergencies. Routine planes remain yours to clear."),
+            ]
+            step = max(0, min(len(steps) - 1, int(modal.get("step", 0))))
+            title = self.font_title.render("FLIGHT CONTROL: QUICK GUIDE", True, config.COLOR_WHITE)
+            self.screen.blit(title, (mx + 34, my + 28))
+            self.screen.blit(self.font_small.render(f"STEP {step + 1} OF {len(steps)}", True, (132, 205, 164)), (mx + 36, my + 82))
+
+            # Step progress indicator.
+            for idx in range(len(steps)):
+                dot_col = (93, 210, 145) if idx <= step else (63, 83, 82)
+                pygame.draw.rect(self.screen, dot_col, (mx + 36 + idx * 26, my + 108, 18, 5), border_radius=3)
+
+            section_title, body = steps[step]
+            self.screen.blit(self.font_header.render(section_title, True, (248, 209, 96)), (mx + 36, my + 144))
+            for line_idx, line in enumerate(body.split("\n")):
+                self.screen.blit(self.font_body.render(line, True, (218, 229, 226)), (mx + 36, my + 184 + line_idx * 30))
+
+            key_bg = pygame.Rect(mx + 34, my + 260, mw - 68, 42)
+            pygame.draw.rect(self.screen, (25, 42, 50), key_bg, border_radius=8)
+            key_hint = self.font_small.render("SPACE  AI clearance     Drag  Manual assignment     P  Pause     F1  Open this guide", True, (179, 203, 195))
+            self.screen.blit(key_hint, key_hint.get_rect(center=key_bg.center))
+            return
+
         mw, mh = 620, 440
         mx, my = (config.WINDOW_WIDTH - mw) // 2, (config.WINDOW_HEIGHT - mh) // 2
         m_rect = pygame.Rect(mx, my, mw, mh)
@@ -1151,20 +1464,28 @@ class DisplayRenderer:
         score = modal.get("score", 0)
         landings = modal.get("landings", 0)
         emerg = modal.get("emergencies", 0)
-        stat_str = f"FINAL SCORE: {score:+d} PTS   |   LANDED: {landings}   |   EMERGENCIES: {emerg}"
-        self.screen.blit(self.font_mono.render(stat_str, True, config.COLOR_CYAN), (stats_box.x + 18, stats_box.y + 18))
+        stat_str = f"PLAYER: {score:+d} PTS   |   LANDED: {landings}   |   EMERGENCIES: {emerg}"
+        self.screen.blit(self.font_mono_sm.render(stat_str, True, config.COLOR_CYAN), (stats_box.x + 18, stats_box.y + 9))
+        ai_str = f"AI RESCUES: {modal.get('ai_rescues', 0)}   |   AI SCORE (SEPARATE): {modal.get('ai_score', 0):+d} PTS"
+        self.screen.blit(self.font_mono_sm.render(ai_str, True, config.COLOR_WARN_AMBER), (stats_box.x + 18, stats_box.y + 32))
 
         # Reward / Penalty Breakdown list
         bd_rect = pygame.Rect(mx + 28, my + 170, mw - 56, 180)
         pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, bd_rect, border_radius=8)
-        self.screen.blit(self.font_header.render("REWARD & PENALTY BREAKDOWN", True, config.COLOR_WHITE), (bd_rect.x + 14, bd_rect.y + 10))
+        self.screen.blit(self.font_header.render("PLAYER REWARD & PENALTY BREAKDOWN", True, config.COLOR_WHITE), (bd_rect.x + 14, bd_rect.y + 10))
 
         by_event = modal.get("breakdown", {}).get("by_event", {})
         ry = bd_rect.y + 38
         if not by_event:
             self.screen.blit(self.font_body.render("No reward events recorded.", True, config.COLOR_TEXT_DIM), (bd_rect.x + 14, ry))
         else:
-            for ev_key, info in list(by_event.items())[:6]:
+            ranked_events = sorted(by_event.items(), key=lambda item: abs(item[1]["points"]), reverse=True)
+            visible_events = ranked_events[:5]
+            if len(ranked_events) > 5:
+                other_count = sum(info["count"] for _, info in ranked_events[5:])
+                other_points = sum(info["points"] for _, info in ranked_events[5:])
+                visible_events.append(("OTHER_EVENTS", {"count": other_count, "points": other_points}))
+            for ev_key, info in visible_events:
                 pts = info["points"]
                 col = config.COLOR_PRIMARY_GREEN if pts >= 0 else config.COLOR_CRITICAL_RED
                 label = ev_key.replace("_", " ").title()

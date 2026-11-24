@@ -210,13 +210,14 @@ class _MemoryStore:
         })
         self._save_browser_save()
 
-    def log_reward(self, level_id: int, flight_id: str, event_type: str, reward_points: int):
+    def log_reward(self, level_id: int, flight_id: str, event_type: str, reward_points: int, actor: str = "SYSTEM"):
         self.reward_history.append({
             "reward_id": len(self.reward_history) + 1,
             "level_id": level_id,
             "aircraft_id": flight_id,
             "event_type": event_type,
             "reward_points": int(reward_points),
+            "actor": actor,
         })
 
     def get_global_counters(self) -> Dict[str, int]:
@@ -434,14 +435,14 @@ class DatabaseLogger:
             (level_id, status, final_score, landings, emergencies),
         )
 
-    def log_reward(self, level_id: int, flight_id: str, event_type: str, reward_points: int):
+    def log_reward(self, level_id: int, flight_id: str, event_type: str, reward_points: int, actor: str = "SYSTEM"):
         if self._mem is not None:
-            self._mem.log_reward(level_id, flight_id, event_type, reward_points)
+            self._mem.log_reward(level_id, flight_id, event_type, reward_points, actor)
             return
         self.db.execute(
-            """INSERT INTO reward_history (level_id, aircraft_id, event_type, reward_points)
-               VALUES (%s, %s, %s, %s)""",
-            (level_id, flight_id, event_type, reward_points),
+            """INSERT INTO reward_history (level_id, aircraft_id, event_type, reward_points, actor)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (level_id, flight_id, event_type, reward_points, actor),
         )
 
     # -------------------------------------------------------------------------
@@ -520,7 +521,7 @@ class DatabaseLogger:
 
             accepts = sum(1 for p in mem.player_decisions if p["decision_type"] == "ACCEPT_AI")
             overrides = sum(1 for p in mem.player_decisions if p["decision_type"] == "OVERRIDE")
-            timeouts = sum(1 for p in mem.player_decisions if p["decision_type"] == "TIMEOUT_AUTO_EXECUTE")
+            timeouts = sum(1 for e in mem.simulation_events if e["event_type"] == "AI_EMERGENCY_RESCUE")
 
             req_by_id = {mr["request_id"]: mr for mr in mem.missions_requests}
             ac_by_id = {ac["aircraft_id"]: ac for ac in mem.aircraft}
@@ -561,7 +562,7 @@ class DatabaseLogger:
 
             p_accept_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'ACCEPT_AI'")
             p_override_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'OVERRIDE'")
-            p_timeout_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM player_decisions WHERE decision_type = 'TIMEOUT_AUTO_EXECUTE'")
+            p_timeout_row = self.db.fetchone("SELECT COUNT(*) as cnt FROM simulation_events WHERE event_type = 'AI_EMERGENCY_RESCUE'")
 
             total_missions = int((total_req_row or {}).get("cnt") or 0)
             successful_landings = int((landed_row or {}).get("cnt") or 0)

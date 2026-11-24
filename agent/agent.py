@@ -1,7 +1,7 @@
 """
 =============================================================================
 SkyATC AI - Autonomous ATC Agent Controller (Modules 4 & 6)
-Coordinates PEAS loop, 10s HITL window, Accept/Override, and DB logging.
+Coordinates PEAS loop, 20s HITL window, Accept/Override, and DB logging.
 =============================================================================
 """
 
@@ -23,7 +23,7 @@ from .reward import RewardSystem
 class ATCAgent:
     """
     Utility-Based Agent with Goal-Based Planning, 9-rule Plan Validation,
-    and a 10-second Human-in-the-Loop (HITL) control window.
+    and a 20-second Human-in-the-Loop (HITL) control window.
     """
 
     def __init__(self, airbase: Airbase, db_logger: Optional[DatabaseLogger] = None):
@@ -45,6 +45,7 @@ class ATCAgent:
 
         self.stats: Dict[str, Any] = {
             "landings": 0,
+            "clearances": 0,
             "emergencies_handled": 0,
             "conflicts_prevented": 0,
             "validation_rejections": 0,
@@ -62,6 +63,7 @@ class ATCAgent:
             "last_validation_msg": "All safety guardrails active",
         }
         self.auto_takeover_enabled: bool = True
+        self.full_auto_takeover: bool = True
 
     def reset_for_level(self, level_id: int):
         """Resets agent state and syncs level runways with database."""
@@ -92,7 +94,7 @@ class ATCAgent:
                 ac.db_request_id = req_id
 
     def step(self, dt: float):
-        """Executes one PEAS cycle: Observe -> Plan/Re-plan -> Poll Async -> HITL 10s Timeout."""
+        """Executes one PEAS cycle: Observe -> Plan/Re-plan -> Poll Async -> HITL 20s Timeout."""
         self._register_new_aircraft_in_db()
         current_state = self.observer.observe()
 
@@ -101,7 +103,7 @@ class ATCAgent:
         if async_res:
             if async_res.get("rejected_cloud_plan"):
                 self.stats["validation_rejections"] += 1
-                self.reward_system.evaluate_action("INVALID_AI_DECISION", note="; ".join(async_res.get("issues", [])))
+                self.reward_system.evaluate_action("INVALID_AI_DECISION", note="; ".join(async_res.get("issues", [])), actor="AI")
                 self.ui_state["last_validation_msg"] = f"Rejected unsafe LLM plan ({async_res.get('validation_code')})"
             else:
                 self._apply_plan_to_ui_and_db(async_res)
@@ -113,19 +115,29 @@ class ATCAgent:
             plan = self.planner.generate_plan(current_state, trigger_async_llm=True)
             self._apply_plan_to_ui_and_db(plan)
 
-        # Check HITL 10-second timeout per pending aircraft (only while a compatible runway is free)
+        # One actionable AI recommendation owns the visible 20-second decision window.
         if self.auto_takeover_enabled:
-            pending_ranked = self.airbase.get_ranked_pending_aircraft()
-            if pending_ranked:
-                available_rwys = self.airbase.get_available_runways()
-                for ac in pending_ranked:
-                    has_compatible = any(r.supports_aircraft(ac.min_runway_length_m) for r in available_rwys)
-                    if not has_compatible:
-                        if ac.hitl_decision_timer < 2.0:
-                            ac.hitl_decision_timer = 2.0
-                    elif ac.hitl_pending and ac.hitl_decision_timer <= 0.0:
+            target = self.get_co_pilot_target()
+            if target:
+                ac, _ = target
+                if ac.hitl_pending and ac.hitl_decision_timer <= 0.0:
+                    if not self.full_auto_takeover and not ac.timeout_penalty_recorded:
+                        if ac.is_emergency():
+                            penalty = "MISSED_DECISION" if self._is_timeout_rescue_emergency(ac) else "EMERGENCY_DELAYED"
+                            pts = self.reward_system.evaluate_action(penalty, ac.flight_id, "Player decision window expired", actor="PLAYER")
+                        else:
+                            pts = self.reward_system.evaluate_action("MISSED_DECISION", ac.flight_id, "Player decision window expired", actor="PLAYER")
+                        ac.timeout_penalty_recorded = True
+                        self._push_notification(f"PLAYER TIMEOUT PENALTY: {ac.flight_id} {pts:+d} PTS")
+                    ac.decision_window_expired = True
+
+                    if self.full_auto_takeover or self._is_timeout_rescue_emergency(ac):
                         if self._execute_timeout_takeover(ac, current_state):
-                            break
+                            self.stats["timeout_auto_executes"] += 1
+                    else:
+                        ac.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
+                        if ac.timeout_penalty_recorded:
+                            self._push_notification(f"PLAYER CLEARANCE NEEDED: {ac.flight_id} is still holding.")
 
         # Sync landed outcomes to DB once
         if self.db_logger:
@@ -186,7 +198,7 @@ class ATCAgent:
         self.ui_state["plan_lines"] = lines
 
     def _execute_timeout_takeover(self, aircraft: Aircraft, current_state: Dict[str, Any]) -> bool:
-        """Autonomous AI takeover when 10-second HITL timer reaches 0."""
+        """Rescues a critical-fuel or engine-emergency flight after the player's window expires."""
         plan = self.planner.current_plan or self.planner.generate_plan(current_state, trigger_async_llm=False)
 
         # Re-validate right before execution to guarantee zero stale conflicts
@@ -198,25 +210,25 @@ class ATCAgent:
         chosen_item = next((a for a in valid_actions if a.get("flight_id") == aircraft.flight_id), None)
         if not chosen_item or chosen_item.get("action") == "HOLD" or not chosen_item.get("assigned_runway"):
             # Safe hold orbit if no compatible runway is free (award conflict avoidance once per hold)
-            aircraft.hitl_decision_timer = 4.0
+            aircraft.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
             if not aircraft.hold_conflict_rewarded:
                 aircraft.hold_conflict_rewarded = True
                 self.stats["conflicts_prevented"] += 1
-                self.reward_system.evaluate_action("RUNWAY_CONFLICT_AVOIDED", aircraft.flight_id, "Hold orbit while runways busy")
+                self.reward_system.evaluate_action("RUNWAY_CONFLICT_AVOIDED", aircraft.flight_id, "Hold orbit while runways busy", actor="AI")
             return False
 
         rwy_id = chosen_item["assigned_runway"]
         if self.airbase.authorize_landing(aircraft.flight_id, rwy_id):
             aircraft.decision_maker = "AI_AGENT"
-            self.stats["timeout_auto_executes"] += 1
             self._record_landing_rewards(aircraft, rwy_id, decision_type="TIMEOUT_AUTO_EXECUTE", is_override=False)
             self._push_notification(f"Timeout Auto-Execute: {aircraft.flight_id} -> {rwy_id}")
             self._refresh_plan_after_action()
             return True
+        aircraft.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
         return False
 
     def accept_ai_plan(self) -> bool:
-        """Player clicks [ACCEPT AI PLAN] within 10s window."""
+        """Player accepts the AI plan within the 20s window."""
         current_state = self.observer.observe()
         plan = self.planner.current_plan or self.planner.generate_plan(current_state, trigger_async_llm=False)
         is_valid, issues, valid_actions, val_code = self.validator.validate_plan(plan, current_state)
@@ -235,12 +247,21 @@ class ATCAgent:
             if ac and self.airbase.authorize_landing(fid, rwy_id):
                 ac.decision_maker = "AI_ACCEPTED"
                 self.stats["ai_accepts"] += 1
+                ac.followed_ai_recommendation = True
                 self._record_landing_rewards(ac, rwy_id, decision_type="ACCEPT_AI", is_override=False)
                 executed_any = True
 
         if executed_any:
             self._refresh_plan_after_action()
         return executed_any
+
+    @staticmethod
+    def _is_timeout_rescue_emergency(aircraft: Aircraft) -> bool:
+        """Only immediate fuel or engine threats may be cleared automatically."""
+        return (
+            aircraft.emergency_type in ("CRITICAL_FUEL", "ENGINE_PROBLEM")
+            or aircraft.fuel_level <= config.FUEL_CRITICAL_THRESHOLD
+        )
 
     def override_assignment(
         self,
@@ -260,7 +281,7 @@ class ATCAgent:
         if runway_id is None or runway_id == "HOLD":
             has_compat_avail = any(r.supports_aircraft(ac.min_runway_length_m) for r in self.airbase.get_available_runways())
             if ac.is_emergency() and has_compat_avail:
-                self.reward_system.evaluate_action("EMERGENCY_DELAYED", flight_id, "Emergency flight placed on hold")
+                self.reward_system.evaluate_action("EMERGENCY_DELAYED", flight_id, "Emergency flight placed on hold", actor="PLAYER")
             self.airbase.hold_aircraft(flight_id)
             self.stats["player_overrides"] += 1
             if self.db_logger:
@@ -291,7 +312,7 @@ class ATCAgent:
                 penalty_key = "RUNWAY_CONFLICT"
             else:
                 penalty_key = "WRONG_RUNWAY_ASSIGNMENT"
-            self.reward_system.evaluate_action(penalty_key, flight_id, reason)
+            self.reward_system.evaluate_action(penalty_key, flight_id, reason, actor="PLAYER")
             if self.db_logger:
                 dec_id = self._last_decision_id_by_flight.get(flight_id)
                 self.db_logger.log_feedback(dec_id, flight_id, val_code, "REJECTED", reason)
@@ -310,24 +331,45 @@ class ATCAgent:
     def _record_landing_rewards(self, ac: Aircraft, runway_id: str, decision_type: str, is_override: bool):
         """Scores executed landing clearance & records feedback to DB."""
         self.stats["landings"] += 1
-        self.reward_system.evaluate_action("CORRECT_RUNWAY_ASSIGNMENT", ac.flight_id, f"Assigned {runway_id}")
-        self.reward_system.evaluate_action("SUCCESSFUL_LANDING", ac.flight_id, f"Cleared to {runway_id}")
+        self.stats["clearances"] = self.stats.get("clearances", 0) + 1
+        actor = self.score_actor_for_aircraft(ac)
+        self.reward_system.evaluate_action("CORRECT_RUNWAY_ASSIGNMENT", ac.flight_id, f"Assigned {runway_id}", actor=actor)
+        self.reward_system.evaluate_action("SUCCESSFUL_LANDING", ac.flight_id, f"Cleared to {runway_id}", actor=actor)
 
         if ac.is_emergency():
             self.stats["emergencies_handled"] += 1
-            self.reward_system.evaluate_action("EMERGENCY_HANDLED", ac.flight_id, ac.emergency_type)
+            self.reward_system.evaluate_action("EMERGENCY_HANDLED", ac.flight_id, ac.emergency_type, actor=actor)
 
         if ac.waiting_time <= config.WAITING_REWARD_THRESHOLD:
-            self.reward_system.evaluate_action("REDUCED_WAITING_TIME", ac.flight_id, f"Wait {int(ac.waiting_time)}s")
+            self.reward_system.evaluate_action("REDUCED_WAITING_TIME", ac.flight_id, f"Wait {int(ac.waiting_time)}s", actor=actor)
 
         if all(r.status != RunwayStatus.AVAILABLE for r in self.airbase.runways.values()):
-            self.reward_system.evaluate_action("EFFICIENT_UTILIZATION", ac.flight_id, "All active runways utilized")
+            self.reward_system.evaluate_action("EFFICIENT_UTILIZATION", ac.flight_id, "All active runways utilized", actor=actor)
+
+        ac.efficient_assignment = all(r.status != RunwayStatus.AVAILABLE for r in self.airbase.runways.values())
+        ac.timely_player_decision = (
+            ac.decision_maker != "AI_AGENT"
+            and not ac.decision_window_expired
+            and ac.hitl_decision_timer > 0.0
+        )
+        if decision_type == "CO_PILOT_CLEARANCE":
+            ac.followed_ai_recommendation = True
 
         if self.db_logger:
             dec_id = self._last_decision_id_by_flight.get(ac.flight_id)
-            self.db_logger.log_player_decision(dec_id, ac.db_aircraft_id, ac.flight_id, runway_id, decision_type)
+            if ac.decision_maker == "AI_AGENT":
+                self.db_logger.log_event(
+                    self.airbase.level_id, "AI_EMERGENCY_RESCUE",
+                    f"AI timeout rescue assigned {runway_id}", ac.flight_id, runway_id,
+                )
+            else:
+                self.db_logger.log_player_decision(dec_id, ac.db_aircraft_id, ac.flight_id, runway_id, decision_type)
             self.db_logger.log_feedback(dec_id, ac.flight_id, "VALID", "EXECUTED", f"{decision_type} -> {runway_id}")
             self.db_logger.sync_runways(self.airbase.level_id, self.airbase.runways)
+
+    @staticmethod
+    def score_actor_for_aircraft(aircraft: Aircraft) -> str:
+        return "AI" if aircraft.decision_maker == "AI_AGENT" else "PLAYER"
 
     def _refresh_plan_after_action(self):
         """Recomputes plan immediately after any execution or override."""

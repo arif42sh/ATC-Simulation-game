@@ -20,7 +20,7 @@ Play directly in your browser (WebAssembly powered by Pygbag, no installation ne
   - **Min-Heap Priority Queue (`heapq`)**, **$O(1)$ Flight ID Hash Map**, FIFO Arrival Queue, and sorted UI queue.
   - Event-driven async **Gemini 2.5 Flash** (`response_mime_type="application/json"`) with seamless deterministic Min-Heap fallback + Explainable AI reason badge.
 - **9-Rule Python AI Plan Validator:** Prevents invalid runways, occupied/maintenance conflicts, duplicate aircraft assignments, emergency starvation, and aircraft-size/runway-length mismatches.
-- **10-Second Human-in-the-Loop (HITL) Window:** Accept AI plan (`ACCEPT AI PLAN`), Drag-and-Draw aircraft directly onto a runway, or use quick `OVERRIDE` controls — with autonomous AI execution on timeout.
+- **20-Second Human-in-the-Loop (HITL) Window:** The AI recommends the priority aircraft and runway. The player clears routine traffic; after timeout, the AI only rescues critical-fuel or engine emergencies. Timeout penalties and outcome points are credited separately for the player and AI.
 - **9-Table Persistence & Analytics:** MySQL + SQLite fallback storing `aircraft`, `runways`, `missions_requests`, `agent_decisions`, `player_decisions`, `feedback`, `simulation_events`, `level_history`, and `reward_history`, plus **CSV Report Export**.
 
 ## Quick Start
