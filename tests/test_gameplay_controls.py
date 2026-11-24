@@ -97,7 +97,7 @@ class TestGameplayControls(unittest.TestCase):
         self.assertFalse(self.game.reset_confirm_open)
         self.assertIn("reset", self.game.settings_toast.lower())
 
-    def test_audio_manager_procedural_sound_suite(self):
+    def test_audio_manager_sound_suite(self):
         sound_mgr = self.game.sound
         self.assertIn("click", sound_mgr.sounds)
         self.assertIn("landing", sound_mgr.sounds)
