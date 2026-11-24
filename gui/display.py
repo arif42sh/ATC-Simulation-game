@@ -355,6 +355,8 @@ class DisplayRenderer:
         bot_tax_y = int(rwy_bot.start_y + 40)
         cx = int(rwy_top.center_x)
 
+        wig_left = math.sin(self.pulse_phase * 6.5) > 0.0
+
         def draw_seg(p1, p2):
             pygame.draw.line(self.screen, (178, 164, 130), p1, p2, tax_w + 6)
             pygame.draw.line(self.screen, (38, 42, 50), p1, p2, tax_w)
@@ -362,11 +364,20 @@ class DisplayRenderer:
 
         def draw_holding_bar(x, y, is_vertical=True):
             if is_vertical:
-                pygame.draw.line(self.screen, (245, 200, 50), (x - 2, y - 6), (x - 2, y + 6), 2)
-                pygame.draw.line(self.screen, (245, 200, 50), (x + 2, y - 6), (x + 2, y + 6), 2)
+                pygame.draw.line(self.screen, (245, 200, 50), (x - 2, y - 7), (x - 2, y + 7), 2)
+                pygame.draw.line(self.screen, (245, 200, 50), (x + 2, y - 7), (x + 2, y + 7), 2)
+                # Alternating yellow runway guard wig-wag lights
+                c1 = (255, 220, 55) if wig_left else (110, 85, 18)
+                c2 = (110, 85, 18) if wig_left else (255, 220, 55)
+                pygame.draw.circle(self.screen, c1, (x, y - 10), 2)
+                pygame.draw.circle(self.screen, c2, (x, y + 10), 2)
             else:
-                pygame.draw.line(self.screen, (245, 200, 50), (x - 6, y - 2), (x + 6, y - 2), 2)
-                pygame.draw.line(self.screen, (245, 200, 50), (x - 6, y + 2), (x + 6, y + 2), 2)
+                pygame.draw.line(self.screen, (245, 200, 50), (x - 7, y - 2), (x + 7, y - 2), 2)
+                pygame.draw.line(self.screen, (245, 200, 50), (x - 7, y + 2), (x + 7, y + 2), 2)
+                c1 = (255, 220, 55) if wig_left else (110, 85, 18)
+                c2 = (110, 85, 18) if wig_left else (255, 220, 55)
+                pygame.draw.circle(self.screen, c1, (x - 10, y), 2)
+                pygame.draw.circle(self.screen, c2, (x + 10, y), 2)
 
         # 1. Parallel Taxiway Alpha (North of RWY 1)
         draw_seg((west_loop_x, tax_alpha_y), (east_loop_x, tax_alpha_y))
@@ -685,6 +696,66 @@ class DisplayRenderer:
                     (cx + rwy.uy * 14, cy - rwy.ux * 14), 3
                 )
                 s_t += 28.0
+
+        # 9. ICAO Standard Runway Lighting System
+        # A. High-Intensity Runway Edge Lights (HIRL):
+        # White along main zone, alternating amber/yellow in final 28% rollout caution zone
+        caution_t = rwy.pixel_length * 0.72
+        strobe_on = math.sin(self.pulse_phase * 6.0) > 0.15
+
+        lt = 10.0
+        while lt <= rwy.pixel_length - 10.0:
+            is_caution = (lt >= caution_t)
+            edge_col = (255, 205, 75) if is_caution else (255, 252, 235)
+            halo_col = (140, 110, 35) if is_caution else (120, 135, 160)
+
+            for side_sign in (-1.0, 1.0):
+                lx = rwy.start_x + rwy.ux * lt - rwy.uy * (half_w - 1.2) * side_sign
+                ly = rwy.start_y + rwy.uy * lt + rwy.ux * (half_w - 1.2) * side_sign
+                pygame.draw.circle(self.screen, halo_col, (int(lx), int(ly)), 3)
+                pygame.draw.circle(self.screen, edge_col, (int(lx), int(ly)), 1)
+
+            lt += 24.0
+
+        # B. Bidirectional Runway Threshold (Green) & End (Red) Lights:
+        for end_t, is_start in ((4.0, True), (rwy.pixel_length - 4.0, False)):
+            # Transverse Green Threshold Light Bar
+            for off in range(-14, 15, 3):
+                tx = rwy.start_x + rwy.ux * end_t - rwy.uy * float(off)
+                ty = rwy.start_y + rwy.uy * end_t + rwy.ux * float(off)
+                pygame.draw.circle(self.screen, (20, 100, 45), (int(tx), int(ty)), 3)
+                pygame.draw.circle(self.screen, (60, 255, 130), (int(tx), int(ty)), 1)
+
+            # Outboard Wing-Bar Green Lights
+            for wing_off in (-22.0, -18.0, 18.0, 22.0):
+                wx = rwy.start_x + rwy.ux * end_t - rwy.uy * wing_off
+                wy = rwy.start_y + rwy.uy * end_t + rwy.ux * wing_off
+                pygame.draw.circle(self.screen, (20, 100, 45), (int(wx), int(wy)), 3)
+                pygame.draw.circle(self.screen, (80, 255, 150), (int(wx), int(wy)), 1)
+
+            # Ruby Red Runway End Stop Bar
+            for roff in range(-12, 13, 4):
+                rx = rwy.start_x + rwy.ux * end_t - rwy.uy * float(roff)
+                ry = rwy.start_y + rwy.uy * end_t + rwy.ux * float(roff)
+                pygame.draw.circle(self.screen, (255, 50, 50), (int(rx + (1.5 if is_start else -1.5)), int(ry)), 1)
+
+            # REIL (Runway End Identifier Lights - Flashing white strobes)
+            if strobe_on:
+                for reil_off in (-26.0, 26.0):
+                    reil_x = rwy.start_x + rwy.ux * end_t - rwy.uy * reil_off
+                    reil_y = rwy.start_y + rwy.uy * end_t + rwy.ux * reil_off
+                    pygame.draw.circle(self.screen, (160, 200, 255), (int(reil_x), int(reil_y)), 5)
+                    pygame.draw.circle(self.screen, (255, 255, 255), (int(reil_x), int(reil_y)), 2)
+
+        # C. Precision Approach Path Indicator (PAPI - 4 light units: 2 White, 2 Red)
+        papi_t = 68.0
+        papi_lateral = half_w + 12.0
+        for i, p_col in enumerate([(255, 255, 255), (255, 255, 255), (255, 55, 55), (255, 55, 55)]):
+            px = rwy.start_x + rwy.ux * (papi_t + (i - 1.5) * 5.0) - rwy.uy * papi_lateral
+            py = rwy.start_y + rwy.uy * (papi_t + (i - 1.5) * 5.0) + rwy.ux * papi_lateral
+            h_col = (120, 130, 150) if p_col[1] > 100 else (130, 30, 30)
+            pygame.draw.circle(self.screen, h_col, (int(px), int(py)), 3)
+            pygame.draw.circle(self.screen, p_col, (int(px), int(py)), 1)
 
         # Status badge pill above runway start/mid
         if rwy.status == RunwayStatus.AVAILABLE:
@@ -1068,25 +1139,11 @@ class DisplayRenderer:
         if selected_ac and selected_ac.status == FlightStatus.HOLDING:
             pygame.draw.circle(self.screen, (45, 95, 75), (int(selected_ac.orbit_x), int(selected_ac.orbit_y)), int(selected_ac.orbit_radius), 1)
 
-        # Draw subtle AI-recommended route preview lines while planes await clearance
-        plan = agent.ui_state.get("current_plan")
-        # Draw Active AI Co-Pilot Recommendation Guide
+        # Draw local AI focus markers; the radio-style banner gives the recommendation.
         if not drag_state and hasattr(agent, "get_co_pilot_target"):
             co_target = agent.get_co_pilot_target()
             if co_target:
                 self._draw_co_pilot_guide(co_target)
-
-        # Draw aircraft approach paths when cleared to land
-        for ac in airbase.aircraft_fleet:
-            if not ac.is_active_in_airspace():
-                continue
-
-            if ac.status in (FlightStatus.INTERCEPT, FlightStatus.APPROACHING) and ac.assigned_runway:
-                rwy = airbase.runways.get(ac.assigned_runway)
-                if rwy:
-                    path_col = config.COLOR_CRITICAL_RED if ac.is_emergency() else config.COLOR_CYAN
-                    target = (rwy.approach_x, rwy.approach_y) if ac.status == FlightStatus.INTERCEPT else (rwy.start_x, rwy.start_y)
-                    self._draw_flow_approach_path((ac.x, ac.y), target, path_col)
 
         # Draw Drag-and-Draw Manual Override Preview Path
         if drag_state and drag_state.get("aircraft"):
@@ -1202,22 +1259,12 @@ class DisplayRenderer:
 
         pulse = 0.5 + 0.5 * math.sin(self.pulse_phase * 2.5)
 
-        # 1. Sleek HUD corner reticle around priority aircraft (no concentric circles)
+        # Keep the recommendation local: spotlight the plane and runway threshold
+        # without drawing a long route across the radar.
         gold_col = (255, 215, 65)
         self._draw_hud_reticle(ac.x, ac.y, size=int(22 + 3 * pulse), color=gold_col, arm_len=7)
-
-        # 2. Glowing animated flowing chevrons to the actual runway threshold
-        guide_col = (
-            min(255, int(60 + 195 * pulse)),
-            min(255, int(220 + 35 * pulse)),
-            min(255, int(130 + 125 * pulse)),
-        )
-        # Match the player's drag preview: arc onto the closest runway threshold,
-        # then straighten for the final approach.
-        self._draw_curved_drag_route(ac, rwy, (int(ac.x), int(ac.y)), guide_col)
-
         threshold = rwy.get_closest_threshold(ac.x, ac.y)["start"]
-        self._draw_hud_reticle(threshold[0], threshold[1], size=int(14 + 3 * pulse), color=guide_col, arm_len=5)
+        self._draw_hud_reticle(threshold[0], threshold[1], size=int(20 + 3 * pulse), color=gold_col, arm_len=6)
 
     def _draw_radio_comms_bubble(self, co_pilot_target: Optional[Tuple[Any, Any]]):
         if not co_pilot_target:
@@ -1231,12 +1278,20 @@ class DisplayRenderer:
         border_col = config.COLOR_CRITICAL_RED if is_em else (255, 215, 65)
 
         if is_em:
-            msg = f"MAYDAY! {ac.flight_id} ({int(ac.fuel_level)}% FUEL): Land {rwy.id} [SPACE]"
+            reason = self._get_emergency_symbol(ac) or "EMERGENCY"
+            emergency_detail = f"{int(ac.fuel_level)}% FUEL" if reason == "FUEL" else reason.replace("_", " ")
+            msg = f"MAYDAY • {ac.flight_id} • {emergency_detail} • {rwy.id} • SPACE TO CLEAR"
         else:
-            msg = f"TOWER: {ac.flight_id} ({ac.model}) -> {rwy.id} [Press SPACE]"
+            msg = f"AI RECOMMENDS • {ac.flight_id} → {rwy.id} • PRESS SPACE"
 
         lbl = self.font_tiny.render(msg, True, config.COLOR_WHITE)
-        bw, bh = max(250, min(360, lbl.get_width() + 28)), 26
+        max_width = min(380, config.WINDOW_WIDTH - 32)
+        if lbl.get_width() > max_width - 24:
+            clipped = msg
+            while clipped and self.font_tiny.size(clipped + "…")[0] > max_width - 24:
+                clipped = clipped[:-1]
+            lbl = self.font_tiny.render(clipped.rstrip() + "…", True, config.COLOR_WHITE)
+        bw, bh = min(max_width, lbl.get_width() + 24), 26
         bx = (config.WINDOW_WIDTH - bw) // 2
         by = 54
         comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
