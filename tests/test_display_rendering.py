@@ -87,6 +87,10 @@ class TestDisplayRendering(unittest.TestCase):
         # Render in-game pause overlay
         self.renderer._render_pause_overlay()
 
+    def test_rules_modal_rendering(self):
+        for tab in ("CONTROLS", "CO-PILOT", "SCORING", "SAFETY"):
+            self.renderer.render_rules_modal(active_tab=tab)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -110,6 +110,19 @@ class TestGameplayControls(unittest.TestCase):
         sound_mgr.set_master_volume(0.8)
         self.assertEqual(sound_mgr.master_volume, 0.8)
 
+    def test_rules_modal_navigation(self):
+        self.assertFalse(self.game.rules_open)
+        self.game._open_rules()
+        self.assertTrue(self.game.rules_open)
+        self.assertEqual(self.game.rules_tab, "CONTROLS")
+
+        for tab in ("CO-PILOT", "SCORING", "SAFETY", "CONTROLS"):
+            self.game._set_rules_tab(tab)
+            self.assertEqual(self.game.rules_tab, tab)
+
+        self.game._close_rules()
+        self.assertFalse(self.game.rules_open)
+
 
 if __name__ == "__main__":
     unittest.main()

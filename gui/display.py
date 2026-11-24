@@ -1728,6 +1728,104 @@ class DisplayRenderer:
             t_surf = self.font_tiny.render(toast_msg, True, config.COLOR_PRIMARY_GREEN)
             self.screen.blit(t_surf, t_surf.get_rect(center=(box.centerx, my + 348)))
 
+    def render_rules_modal(self, active_tab: str = "CONTROLS"):
+        """Renders clean, professional classic operations manual & game rules modal."""
+        dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        dim.fill((6, 12, 20, 205))
+        self.screen.blit(dim, (0, 0))
+
+        mw, mh = 760, 480
+        mx = (config.WINDOW_WIDTH - mw) // 2
+        my = (config.WINDOW_HEIGHT - mh) // 2
+        box = pygame.Rect(mx, my, mw, mh)
+
+        # Drop shadow & panel body
+        pygame.draw.rect(self.screen, (6, 10, 16), (mx + 5, my + 6, mw, mh), border_radius=14)
+        pygame.draw.rect(self.screen, (16, 24, 38), box, border_radius=14)
+        pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 2, border_radius=14)
+
+        # Clean Header
+        title_surf = self.font_header.render("FLIGHT OPERATIONS & RULES", True, config.COLOR_WHITE)
+        self.screen.blit(title_surf, title_surf.get_rect(center=(box.centerx, my + 26)))
+
+        # Tab bar separator line
+        pygame.draw.line(self.screen, (34, 52, 72), (mx + 30, my + 92), (mx + mw - 30, my + 92), 1)
+
+        # Inner Content Panel
+        c_rect = pygame.Rect(mx + 36, my + 104, mw - 72, 316)
+        pygame.draw.rect(self.screen, (11, 17, 28), c_rect, border_radius=8)
+        pygame.draw.rect(self.screen, (28, 44, 64), c_rect, 1, border_radius=8)
+
+        px, py = c_rect.x + 22, c_rect.y + 16
+
+        if active_tab == "CONTROLS":
+            self.screen.blit(self.font_body_bold.render("AIRCRAFT NAVIGATION & CLEARANCE CONTROLS", True, (255, 215, 65)), (px, py))
+            items = [
+                ("1. Drag-and-Draw Routing:", "Click and drag any holding aircraft toward an open runway. A green dotted path confirms safe alignment; red indicates an occupied or invalid runway.", config.COLOR_WHITE),
+                ("2. Co-Pilot Quick Clearance [SPACE]:", "Press SPACEBAR at any time to instantly authorize the recommendation prepared by the automated co-pilot.", config.COLOR_CYAN),
+                ("3. Direct Runway Assignment [1, 2, 3]:", "Select a holding flight, then press 1, 2, or 3 to directly clear Runway 1, 2, or 3 without dragging.", config.COLOR_WHITE),
+                ("4. Holding Orbit & Simulation Pause:", "Press [H] to direct selected flight into holding orbit. Press [P] to pause simulation anytime.", config.COLOR_TEXT_MUTED),
+            ]
+            cy = py + 28
+            for header, desc, h_col in items:
+                self.screen.blit(self.font_small.render(header, True, h_col), (px, cy))
+                self.screen.blit(self.font_tiny.render(desc, True, (180, 198, 215)), (px + 14, cy + 18))
+                cy += 44
+
+        elif active_tab == "CO-PILOT":
+            self.screen.blit(self.font_body_bold.render("CO-PILOT ASSISTANCE & TAKEOVER MODES", True, (255, 215, 65)), (px, py))
+            items = [
+                ("BALANCED MODE (Standard Pacing):", "Each recommendation provides a 20-second human decision window. If expired, the co-pilot executes an emergency takeover to rescue the flight, applying an AI penalty (-50 PTS) and restricting star rating.", (75, 225, 255)),
+                ("HARDCORE MODE (Expert Challenge):", "All automated takeover rescues are DISABLED. If you fail to clear aircraft before fuel exhaustion or conflicts arise, aircraft will crash. Strict human ATC responsibility.", config.COLOR_CRITICAL_RED),
+                ("RELAXED MODE (Practice & Training):", "Expands decision window to 30 seconds for comfortable pacing. Recommended for learning multi-runway sequencing and emergency prioritization.", config.COLOR_PRIMARY_GREEN),
+            ]
+            cy = py + 28
+            for header, desc, h_col in items:
+                self.screen.blit(self.font_small.render(header, True, h_col), (px, cy))
+                words = desc.split()
+                line1, line2 = "", ""
+                for w in words:
+                    if len(line1 + " " + w) < 85:
+                        line1 += (" " if line1 else "") + w
+                    else:
+                        line2 += (" " if line2 else "") + w
+                self.screen.blit(self.font_tiny.render(line1, True, (180, 198, 215)), (px + 14, cy + 18))
+                if line2:
+                    self.screen.blit(self.font_tiny.render(line2, True, (180, 198, 215)), (px + 14, cy + 32))
+                cy += 54
+
+        elif active_tab == "SCORING":
+            self.screen.blit(self.font_body_bold.render("MISSION PERFORMANCE & 3-STAR RATING", True, (255, 215, 65)), (px, py))
+            star_rules = [
+                ("3 STARS (Master Human ATC):", "All aircraft landed safely with 100% human clearances and ZERO automated AI rescues.", (255, 225, 65)),
+                ("2 STARS (Proficient ATC):", "Successful mission with at most 1 automated AI takeover rescue.", (75, 225, 255)),
+                ("1 STAR (Assisted Landing):", "Airbase secured, but required multiple AI automated rescues.", (130, 225, 160)),
+                ("0 STARS (Mission Failed):", "Airfield collision occurred or 100% full automated autopilot landings (no player input).", config.COLOR_WARN_AMBER),
+            ]
+            cy = py + 28
+            for s_hdr, s_desc, s_col in star_rules:
+                self.screen.blit(self.font_small.render(s_hdr, True, s_col), (px, cy))
+                self.screen.blit(self.font_tiny.render(s_desc, True, (180, 198, 215)), (px + 14, cy + 18))
+                cy += 38
+
+            pygame.draw.line(self.screen, (28, 44, 64), (px, cy + 4), (px + c_rect.w - 44, cy + 4), 1)
+            pts_summary = "Touchdown: +100 PTS  |  Landing Streak Combo: +50 PTS  |  Timely Decision: +20 PTS  |  AI Rescue: -50 PTS"
+            self.screen.blit(self.font_tiny.render(pts_summary, True, config.COLOR_CYAN), (px, cy + 12))
+
+        elif active_tab == "SAFETY":
+            self.screen.blit(self.font_body_bold.render("AIRFIELD SAFETY RULES & FLIGHT RESTRICTIONS", True, (255, 215, 65)), (px, py))
+            rules = [
+                ("1. Emergency Priority (Red Flights):", "Aircraft with critical fuel (<20%) or engine problems declare emergency. They hold top priority and must be cleared immediately ahead of routine flights.", config.COLOR_CRITICAL_RED),
+                ("2. Runway Length Constraints:", "Heavy widebody aircraft require long runways (>=1800m). Assigning a heavy jet to an undersized runway violates safety guardrails and will be rejected.", config.COLOR_WHITE),
+                ("3. Runway Separation & Occupancy:", "Only one aircraft may land or rollout on a runway at a time. Routing a second flight to an active runway causes collision.", config.COLOR_WARN_AMBER),
+                ("4. Holding Fuel Exhaustion:", "Aircraft in holding orbits continuously consume fuel. If fuel drops to 0% before touching down, the aircraft will crash.", config.COLOR_WHITE),
+            ]
+            cy = py + 28
+            for r_hdr, r_desc, r_col in rules:
+                self.screen.blit(self.font_small.render(r_hdr, True, r_col), (px, cy))
+                self.screen.blit(self.font_tiny.render(r_desc, True, (180, 198, 215)), (px + 14, cy + 18))
+                cy += 44
+
     # =========================================================================
     # SCREEN 4: AI & DB STATS
     # =========================================================================

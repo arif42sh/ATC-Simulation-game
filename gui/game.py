@@ -91,10 +91,34 @@ class SkyATCGame:
         self.settings_toast: str = ""
         self._apply_settings()
 
+        # Rules Modal State
+        self.rules_open: bool = False
+        self.rules_tab: str = "CONTROLS"
+
         if initial_level is not None:
             self.start_level(initial_level)
         else:
             self._switch_state(GameState.MAIN_MENU)
+
+    # -------------------------------------------------------------------------
+    # Rules & Guide Management
+    # -------------------------------------------------------------------------
+
+    def _open_rules(self):
+        self.rules_open = True
+        self.rules_tab = "CONTROLS"
+        self.sound.play("click")
+        self._rebuild_buttons()
+
+    def _close_rules(self):
+        self.rules_open = False
+        self.sound.play("click")
+        self._rebuild_buttons()
+
+    def _set_rules_tab(self, tab: str):
+        self.rules_tab = tab
+        self.sound.play("click")
+        self._rebuild_buttons()
 
     # -------------------------------------------------------------------------
     # Settings Management
@@ -258,6 +282,33 @@ class SkyATCGame:
         cx = config.WINDOW_WIDTH // 2
         buttons: List[Button] = []
 
+        if self.rules_open:
+            mw, mh = 760, 480
+            mx = (config.WINDOW_WIDTH - mw) // 2
+            my = (config.WINDOW_HEIGHT - mh) // 2
+
+            tabs = [
+                ("CONTROLS", "CONTROLS", mx + 36),
+                ("CO-PILOT MODES", "CO-PILOT", mx + 204),
+                ("SCORING", "SCORING", mx + 372),
+                ("SAFETY RULES", "SAFETY", mx + 540),
+            ]
+            for label, t_key, tx in tabs:
+                is_active = (self.rules_tab == t_key)
+                bg = (34, 62, 96) if is_active else (18, 28, 42)
+                hv = (48, 86, 132) if is_active else (28, 42, 62)
+                brd = config.COLOR_CYAN if is_active else (44, 64, 88)
+                buttons.append(Button(tx, my + 54, 160, 32, label,
+                                      (lambda k=t_key: self._set_rules_tab(k)),
+                                      bg_color=bg, hover_color=hv, border_color=brd, font_size=12))
+
+            # Close button
+            buttons.append(Button(mx + (mw - 140) // 2, my + mh - 44, 140, 32, "CLOSE", self._close_rules,
+                                  bg_color=(34, 76, 120), hover_color=(48, 102, 160), border_color=config.COLOR_CYAN, font_size=13))
+
+            self.action_panel.set_buttons(buttons)
+            return
+
         if self.settings_open:
             mw, mh = 520, 404
             mx = (config.WINDOW_WIDTH - mw) // 2
@@ -333,19 +384,21 @@ class SkyATCGame:
             return
 
         if self.current_state == GameState.MAIN_MENU:
-            bw, bh = 260, 46
+            bw, bh = 260, 44
             bx = cx - bw // 2
             buttons.extend([
-                Button(bx, 310, bw, bh, "START GAME", self._on_start_game,
+                Button(bx, 295, bw, bh, "START GAME", self._on_start_game,
                        bg_color=(28, 150, 64), hover_color=(38, 185, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=16),
-                Button(bx, 368, bw, bh, "RESUME GAME", self._on_resume_game,
+                Button(bx, 347, bw, bh, "RESUME GAME", self._on_resume_game,
                        bg_color=(56, 86, 118), hover_color=(76, 114, 152), border_color=config.COLOR_CYAN,
                        font_size=15, enabled=self.has_active_session),
-                Button(bx, 426, bw, bh, "SELECT LEVEL", lambda: self._switch_state(GameState.LEVEL_SELECT),
+                Button(bx, 399, bw, bh, "SELECT LEVEL", lambda: self._switch_state(GameState.LEVEL_SELECT),
                        bg_color=(36, 92, 168), hover_color=(52, 122, 212), border_color=config.COLOR_CYAN, font_size=15),
-                Button(bx, 484, bw, bh, "SETTINGS ⚙", self._open_settings,
+                Button(bx, 451, bw, bh, "RULES", self._open_rules,
+                       bg_color=(34, 76, 120), hover_color=(48, 102, 160), border_color=config.COLOR_CYAN, font_size=15),
+                Button(bx, 503, bw, bh, "SETTINGS ⚙", self._open_settings,
                        bg_color=(38, 72, 102), hover_color=(52, 98, 138), border_color=config.COLOR_CYAN, font_size=15),
-                Button(bx, 542, bw, bh, "EXIT (DESKTOP)" if config.IS_WEB else "EXIT", self._on_exit,
+                Button(bx, 555, bw, bh, "EXIT (DESKTOP)" if config.IS_WEB else "EXIT", self._on_exit,
                        bg_color=(92, 42, 46), hover_color=(135, 56, 60), border_color=config.COLOR_CRITICAL_RED,
                        font_size=14 if config.IS_WEB else 15, enabled=not config.IS_WEB),
             ])
@@ -871,6 +924,8 @@ class SkyATCGame:
                 reset_confirm=self.reset_confirm_open,
                 toast_msg=self.settings_toast,
             )
+        elif self.rules_open:
+            self.renderer.render_rules_modal(active_tab=self.rules_tab)
 
     def get_star_progress_ratio(self) -> float:
         total_ac = self.level_mgr.level_cfg.get("total_aircraft", 10)
@@ -899,6 +954,11 @@ class SkyATCGame:
             if self.settings_open:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._close_settings()
+                continue
+
+            if self.rules_open:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self._close_rules()
                 continue
 
             if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
