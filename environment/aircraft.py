@@ -44,7 +44,7 @@ class Aircraft:
         x: float = 120.0,
         y: float = 180.0,
         orbit_center: Tuple[float, float] = (140.0, 200.0),
-        orbit_radius: float = 34.0,
+        orbit_radius: float = 55.0,
         arrival_seq: int = 0,
         heading: float = 90.0,
     ):
@@ -198,15 +198,17 @@ class Aircraft:
 
             if abs(dist_from_center - self.orbit_radius) > 8.0:
                 angle_to_orbit = math.atan2(self.orbit_y - self.y, self.orbit_x - self.x)
-                step = min(dist_from_center, (self.cruise_speed * 0.20) * dt)
+                step = min(dist_from_center, (self.cruise_speed * 0.22) * dt)
                 self.x += math.cos(angle_to_orbit) * step
                 self.y += math.sin(angle_to_orbit) * step
                 self.heading = math.degrees(angle_to_orbit)
             else:
-                rad = math.atan2(dy, dx) + 0.34 * dt
+                rad = math.atan2(dy, dx) + 0.32 * dt
                 self.x = self.orbit_x + self.orbit_radius * math.cos(rad)
                 self.y = self.orbit_y + self.orbit_radius * math.sin(rad)
-                self.heading = (math.degrees(rad) + 90.0) % 360.0
+                tgt_hd = (math.degrees(rad) + 90.0) % 360.0
+                diff = (tgt_hd - self.heading + 180.0) % 360.0 - 180.0
+                self.heading = (self.heading + diff * min(1.0, 4.0 * dt)) % 360.0
             self.altitude_ft = 3800.0
 
         elif self.status == FlightStatus.INTERCEPT:

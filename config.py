@@ -40,8 +40,8 @@ WINDOW_HEIGHT = 768
 FPS = int(os.getenv("SIMULATION_FPS", "60"))
 
 TOP_BAR_HEIGHT = 50
-SIDEBAR_WIDTH = 385
-CANVAS_WIDTH = WINDOW_WIDTH - SIDEBAR_WIDTH  # 975 px gameplay airbase canvas
+SIDEBAR_WIDTH = 0
+CANVAS_WIDTH = WINDOW_WIDTH  # 1360 px fullscreen radar canvas
 SIDEBAR_X = CANVAS_WIDTH
 CANVAS_HEIGHT = WINDOW_HEIGHT - TOP_BAR_HEIGHT
 
@@ -139,16 +139,16 @@ RUNWAY_LAYOUTS: Dict[int, List[Dict[str, Any]]] = {
             "id": "RWY 1",
             "name": "Runway 1 (Primary Heavy)",
             "length_m": 3000,
-            "start": (235, 315),
-            "end": (625, 315),
+            "start": (435, 315),
+            "end": (825, 315),
             "heading": 90,
         },
         {
             "id": "RWY 2",
             "name": "Runway 2 (Secondary)",
             "length_m": 2400,
-            "start": (305, 535),
-            "end": (585, 365),
+            "start": (505, 535),
+            "end": (785, 365),
             "heading": 59,
         },
     ],
@@ -157,24 +157,24 @@ RUNWAY_LAYOUTS: Dict[int, List[Dict[str, Any]]] = {
             "id": "RWY 1",
             "name": "Runway 1 (Primary Heavy)",
             "length_m": 3200,
-            "start": (220, 240),
-            "end": (650, 240),
+            "start": (420, 240),
+            "end": (850, 240),
             "heading": 90,
         },
         {
             "id": "RWY 2",
             "name": "Runway 2 (Secondary Heavy)",
             "length_m": 2800,
-            "start": (240, 350),
-            "end": (610, 350),
+            "start": (440, 350),
+            "end": (810, 350),
             "heading": 90,
         },
         {
             "id": "RWY 3",
             "name": "Runway 3 (Crosswind Regional)",
             "length_m": 2200,
-            "start": (295, 570),
-            "end": (585, 400),
+            "start": (495, 570),
+            "end": (785, 400),
             "heading": 59,
         },
     ],
@@ -183,32 +183,32 @@ RUNWAY_LAYOUTS: Dict[int, List[Dict[str, Any]]] = {
             "id": "RWY 1",
             "name": "Runway 1 (North Heavy)",
             "length_m": 3400,
-            "start": (220, 225),
-            "end": (650, 225),
+            "start": (420, 225),
+            "end": (850, 225),
             "heading": 90,
         },
         {
             "id": "RWY 2",
             "name": "Runway 2 (Central Heavy)",
             "length_m": 2800,
-            "start": (220, 320),
-            "end": (590, 320),
+            "start": (420, 320),
+            "end": (790, 320),
             "heading": 90,
         },
         {
             "id": "RWY 3",
             "name": "Runway 3 (Crosswind Medium)",
             "length_m": 2300,
-            "start": (280, 560),
-            "end": (570, 390),
+            "start": (480, 560),
+            "end": (770, 390),
             "heading": 59,
         },
         {
             "id": "RWY 4",
             "name": "Runway 4 (Crosswind Light)",
             "length_m": 1800,
-            "start": (380, 630),
-            "end": (620, 490),
+            "start": (580, 630),
+            "end": (820, 490),
             "heading": 59,
         },
     ],

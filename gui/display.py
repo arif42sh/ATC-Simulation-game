@@ -185,25 +185,27 @@ class DisplayRenderer:
         """Draws the concrete airbase pad, Helipad (H), and 2-4 active runways."""
         rwy_count = len(airbase.runways)
         if rwy_count >= 4:
-            tarmac_pts = [
+            base_pts = [
                 (170, 185), (675, 185), (700, 220), (690, 345),
                 (655, 380), (645, 505), (615, 525), (385, 660),
                 (335, 660), (235, 600), (175, 520), (155, 450), (155, 240),
             ]
-            hx, hy, hr, h_ring, h_font = 215, 420, 28, 22, self.font_title
+            hx, hy, hr, h_ring, h_font = 215 + 200, 420, 28, 22, self.font_title
         elif rwy_count == 3:
-            tarmac_pts = [
+            base_pts = [
                 (170, 200), (675, 200), (700, 235), (690, 375),
                 (665, 410), (615, 440), (345, 615), (245, 615),
                 (175, 545), (155, 475), (155, 260),
             ]
-            hx, hy, hr, h_ring, h_font = 215, 445, 28, 22, self.font_title
+            hx, hy, hr, h_ring, h_font = 215 + 200, 445, 28, 22, self.font_title
         else:
-            tarmac_pts = [
+            base_pts = [
                 (175, 195), (655, 195), (680, 225), (680, 420),
                 (375, 600), (205, 580), (175, 490),
             ]
-            hx, hy, hr, h_ring, h_font = 235, 455, 32, 26, self.font_title
+            hx, hy, hr, h_ring, h_font = 235 + 200, 455, 32, 26, self.font_title
+
+        tarmac_pts = [(x + 200, y) for x, y in base_pts]
 
         pygame.draw.polygon(self.screen, config.COLOR_TARMAC_BORDER, [(x + 4, y + 5) for x, y in tarmac_pts])
         pygame.draw.polygon(self.screen, config.COLOR_TARMAC, tarmac_pts)
