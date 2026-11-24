@@ -567,8 +567,6 @@ class DisplayRenderer:
             w2y = cy - uy * 5.0 - ny * 4.0
             pygame.draw.lines(self.screen, color, False, [(w1x, w1y), (cx, cy), (w2x, w2y)], 2)
             d += spacing
-            py = int(y1 + t * (y2 - y1))
-            pygame.draw.circle(self.screen, color, (px, py), radius)
 
     # =========================================================================
     # SCREEN 1: MAIN MENU
