@@ -189,13 +189,14 @@ class TestSkyATCV2(unittest.TestCase):
         self.assertEqual(self.agent.stats["player_overrides"], 1)
 
     def test_tc12_hitl_10s_timeout_auto_execute(self):
-        """TC-12: When 10s decision window expires, AI automatically executes validated plan."""
+        """TC-12: When decision window expires, AI automatically executes validated plan."""
         ac = Aircraft("BG-601", model="B737", fuel_level=55.0)
         self.airbase.add_aircraft(ac)
         self.assertEqual(ac.hitl_decision_timer, config.HITL_TIMEOUT_SECONDS)
 
-        self.airbase.update(10.5)
-        self.agent.step(10.5)
+        dt_expire = config.HITL_TIMEOUT_SECONDS + 0.5
+        self.airbase.update(dt_expire)
+        self.agent.step(dt_expire)
 
         self.assertFalse(ac.hitl_pending)
         self.assertEqual(ac.decision_maker, "AI_AGENT")

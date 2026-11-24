@@ -31,7 +31,7 @@ async def run_gui_simulation(initial_level: Optional[int] = None):
 
         pygame.init()
         print("=" * 70)
-        print(" SkyATC AI V2 - Intelligent Runway Management (CSE 3202)")
+        print(" SkyATC AI V2 — Air Traffic Controller")
         print(" Controls: Drag Plane->Runway or [1]-[4] Override | [Space] Accept AI | [P] Pause")
         print("=" * 70)
         game = SkyATCGame(initial_level=initial_level)

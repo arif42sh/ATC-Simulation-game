@@ -56,8 +56,8 @@ AI_SYNERGY_BONUS_PTS = 30
 TOUCHDOWN_PTS = 100
 COMBO_STREAK_BONUS_PTS = 50
 
-# 10-Second Human-in-the-Loop (HITL) Decision Window (Report Section 9)
-HITL_TIMEOUT_SECONDS = float(os.getenv("HITL_TIMEOUT_SECONDS", "10.0"))
+# 30-Second Human-in-the-Loop (HITL) Decision Window
+HITL_TIMEOUT_SECONDS = float(os.getenv("HITL_TIMEOUT_SECONDS", "30.0"))
 
 # -----------------------------------------------------------------------------
 # Game States (4 Primary Screens)

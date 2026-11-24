@@ -28,7 +28,7 @@ class SkyATCGame:
 
     def __init__(self, initial_level: Optional[int] = None):
         pygame.init()
-        pygame.display.set_caption("SkyATC AI - Intelligent Runway Management (CSE 3202)")
+        pygame.display.set_caption("SkyATC AI — Air Traffic Controller")
 
         self.screen = pygame.display.set_mode((config.WINDOW_WIDTH, config.WINDOW_HEIGHT))
         self.clock = pygame.time.Clock()
@@ -179,21 +179,21 @@ class SkyATCGame:
                                           bg_color=(110, 48, 52), hover_color=(148, 64, 68), border_color=config.COLOR_CRITICAL_RED, font_size=14))
             else:
                 # Top bar controls: Pause (||), Speed (0.5x/1x/2x), SFX Mute, Menu
-                p_lbl = "RESUME" if self.is_paused else "PAUSE ||"
+                p_lbl = "RESUME" if self.is_paused else "PAUSE"
                 speed_lbl = "0.5x" if self.sim_speed < 0.9 else f"{int(self.sim_speed)}x"
                 speed_bg = (28, 92, 96) if self.sim_speed < 0.9 else ((145, 96, 26) if self.sim_speed > 1.1 else (38, 64, 92))
                 speed_hv = (40, 128, 134) if self.sim_speed < 0.9 else ((180, 120, 36) if self.sim_speed > 1.1 else (54, 92, 130))
                 speed_brd = config.COLOR_PRIMARY_GREEN if self.sim_speed < 0.9 else (config.COLOR_WARN_AMBER if self.sim_speed > 1.1 else config.COLOR_CYAN)
                 buttons.extend([
-                    Button(764, 9, 82, 32, p_lbl, self._toggle_pause,
+                    Button(835, 9, 80, 30, p_lbl, self._toggle_pause,
                            bg_color=(160, 88, 28) if self.is_paused else (38, 64, 92),
                            hover_color=(195, 110, 38) if self.is_paused else (54, 92, 130),
                            border_color=config.COLOR_CYAN, font_size=12),
-                    Button(852, 9, 54, 32, speed_lbl, self._toggle_speed,
+                    Button(925, 9, 62, 30, speed_lbl, self._toggle_speed,
                            bg_color=speed_bg, hover_color=speed_hv, border_color=speed_brd, font_size=12),
-                    Button(912, 9, 54, 32, "MUTE" if self.sound.muted else "SFX", self._toggle_mute,
+                    Button(997, 9, 60, 30, "MUTE" if self.sound.muted else "SFX", self._toggle_mute,
                            bg_color=(42, 56, 74), hover_color=(62, 82, 108), font_size=11),
-                    Button(1274, 9, 72, 32, "MENU", self._return_to_menu_paused,
+                    Button(1260, 9, 84, 30, "MENU", self._return_to_menu_paused,
                            bg_color=(52, 62, 82), hover_color=(76, 92, 118), font_size=12),
                 ])
 
