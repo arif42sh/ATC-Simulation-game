@@ -72,6 +72,21 @@ class TestDisplayRendering(unittest.TestCase):
         dash_data = db.get_stats_dashboard_data()
         self.renderer.render_ai_stats(airbase, stats, dash_data, log_scroll=0, export_toast="", mysql_ok=False, ai_ready=True)
 
+    def test_settings_modal_and_pause_rendering(self):
+        settings = {
+            "master_audio": True,
+            "sfx_volume": 1.0,
+            "ambience": True,
+            "copilot_mode": "BALANCED",
+            "trajectory_lines": True,
+        }
+        # Render normal settings modal
+        self.renderer.render_settings_modal(settings, reset_confirm=False, toast_msg="Test Toast")
+        # Render settings modal in reset confirm state
+        self.renderer.render_settings_modal(settings, reset_confirm=True, toast_msg="")
+        # Render in-game pause overlay
+        self.renderer._render_pause_overlay()
+
 
 if __name__ == "__main__":
     unittest.main()

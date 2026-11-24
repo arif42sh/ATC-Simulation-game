@@ -79,6 +79,7 @@ class DisplayRenderer:
         self.floating_texts: List[FloatingText] = []
         self.particles: List[SmokeParticle] = []
         self._terrain_cache: Optional[pygame.Surface] = None
+        self.show_trajectory: bool = True
 
         # Preload crisp system typography
         pygame.font.init()
@@ -1119,7 +1120,9 @@ class DisplayRenderer:
         sim_speed: float,
         modal_state: Optional[Dict[str, Any]],
         muted: bool,
+        show_trajectory: bool = True,
     ):
+        self.show_trajectory = show_trajectory
         self.screen.blit(self._terrain_cache, (0, 0))
 
         # Highlight hovered runway if player is dragging, or compatible runways when holding plane selected
@@ -1154,11 +1157,14 @@ class DisplayRenderer:
             line_col = config.COLOR_PRIMARY_GREEN if drag_valid else config.COLOR_CRITICAL_RED
             runway_id = drag_state.get("hovered_runway")
             target_runway = airbase.runways.get(runway_id) if runway_id else None
-            if target_runway:
-                self._draw_curved_drag_route(src_ac, target_runway, (mx, my), line_col)
+            if getattr(self, "show_trajectory", True):
+                if target_runway:
+                    self._draw_curved_drag_route(src_ac, target_runway, (mx, my), line_col)
+                else:
+                    self._draw_dotted_line((src_ac.x, src_ac.y), (mx, my), line_col, spacing=7)
+                    pygame.draw.circle(self.screen, line_col, (mx, my), 7, 2)
             else:
-                self._draw_dotted_line((src_ac.x, src_ac.y), (mx, my), line_col, spacing=7)
-                pygame.draw.circle(self.screen, line_col, (mx, my), 7, 2)
+                pygame.draw.line(self.screen, line_col, (int(src_ac.x), int(src_ac.y)), (int(mx), int(my)), 1)
             if drag_state.get("reason"):
                 tip = self.font_tiny.render(drag_state["reason"], True, line_col)
                 tip_w = tip.get_width() + 10
@@ -1503,15 +1509,22 @@ class DisplayRenderer:
 
     def _render_pause_overlay(self):
         dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
-        dim.fill((8, 14, 24, 155))
+        dim.fill((8, 14, 24, 185))
         self.screen.blit(dim, (0, 0))
-        box = pygame.Rect(config.CANVAS_WIDTH // 2 - 190, 300, 380, 120)
-        pygame.draw.rect(self.screen, config.COLOR_SIDEBAR_BG, box, border_radius=12)
-        pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 2, border_radius=12)
-        t = self.font_title.render("PAUSED", True, config.COLOR_WHITE)
-        self.screen.blit(t, t.get_rect(center=(box.centerx, box.y + 42)))
-        s = self.font_body.render("Press Pause (||) or [P] to resume airbase simulation", True, config.COLOR_TEXT_MUTED)
-        self.screen.blit(s, s.get_rect(center=(box.centerx, box.y + 82)))
+
+        pw, ph = 380, 270
+        px = (config.WINDOW_WIDTH - pw) // 2
+        py = (config.WINDOW_HEIGHT - ph) // 2
+        box = pygame.Rect(px, py, pw, ph)
+
+        pygame.draw.rect(self.screen, (6, 10, 16), (px + 4, py + 6, pw, ph), border_radius=14)
+        pygame.draw.rect(self.screen, (18, 28, 42), box, border_radius=14)
+        pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 2, border_radius=14)
+
+        t = self.font_title.render("SIMULATION PAUSED", True, config.COLOR_WHITE)
+        self.screen.blit(t, t.get_rect(center=(box.centerx, py + 30)))
+        s = self.font_small.render("Press [P] or select an action below:", True, config.COLOR_TEXT_MUTED)
+        self.screen.blit(s, s.get_rect(center=(box.centerx, py + 56)))
 
     def _render_modal_overlay(self, modal: Dict[str, Any]):
         """Renders Level Complete or Crash / Game Over Modal with reward breakdown."""
@@ -1651,6 +1664,95 @@ class DisplayRenderer:
             safe_col = config.COLOR_PRIMARY_GREEN
         s_lbl = self.font_body.render(safe_str, True, safe_col)
         self.screen.blit(s_lbl, (score_box.centerx + 20, score_box.y + 44))
+
+    def render_settings_modal(
+        self,
+        settings: Dict[str, Any],
+        reset_confirm: bool = False,
+        toast_msg: str = "",
+    ):
+        """Renders glassmorphic settings modal with Audio, Gameplay & Co-Pilot, and Progress controls."""
+        dim = pygame.Surface((config.WINDOW_WIDTH, config.WINDOW_HEIGHT), pygame.SRCALPHA)
+        dim.fill((6, 12, 20, 205))
+        self.screen.blit(dim, (0, 0))
+
+        mw, mh = 620, 500
+        mx = (config.WINDOW_WIDTH - mw) // 2
+        my = (config.WINDOW_HEIGHT - mh) // 2
+        box = pygame.Rect(mx, my, mw, mh)
+
+        # Drop shadow & panel body
+        pygame.draw.rect(self.screen, (6, 10, 16), (mx + 6, my + 8, mw, mh), border_radius=16)
+        pygame.draw.rect(self.screen, (16, 24, 38), box, border_radius=16)
+        pygame.draw.rect(self.screen, config.COLOR_CYAN, box, 2, border_radius=16)
+
+        # Title
+        title_surf = self.font_title.render("SETTINGS & PREFERENCES", True, config.COLOR_WHITE)
+        self.screen.blit(title_surf, title_surf.get_rect(center=(box.centerx, my + 30)))
+
+        # ---------------- Section A: Audio & Sound ----------------
+        sec_a_y = my + 64
+        self.screen.blit(self.font_small.render("AUDIO & SOUND CONTROLS", True, config.COLOR_CYAN), (mx + 32, sec_a_y))
+        pygame.draw.line(self.screen, (36, 56, 78), (mx + 30, sec_a_y + 18), (mx + mw - 30, sec_a_y + 18), 1)
+
+        # Row 1: Master Audio
+        r1_y = sec_a_y + 26
+        self.screen.blit(self.font_body.render("Master Audio:", True, config.COLOR_WHITE), (mx + 36, r1_y))
+        self.screen.blit(self.font_tiny.render("Global game mute / unmute toggle", True, config.COLOR_TEXT_MUTED), (mx + 36, r1_y + 18))
+
+        # Row 2: SFX Volume
+        r2_y = r1_y + 44
+        self.screen.blit(self.font_body.render("Sound Effects (SFX):", True, config.COLOR_WHITE), (mx + 36, r2_y))
+        self.screen.blit(self.font_tiny.render("Touchdown chimes, radar beeps & alarms", True, config.COLOR_TEXT_MUTED), (mx + 36, r2_y + 18))
+
+        # Row 3: Ambience
+        r3_y = r2_y + 44
+        self.screen.blit(self.font_body.render("Airport Ambience & Radar:", True, config.COLOR_WHITE), (mx + 36, r3_y))
+        self.screen.blit(self.font_tiny.render("Atmospheric airfield hum & periodic radar pulse", True, config.COLOR_TEXT_MUTED), (mx + 36, r3_y + 18))
+
+        # ---------------- Section B: Gameplay & Co-Pilot ----------------
+        sec_b_y = r3_y + 46
+        self.screen.blit(self.font_small.render("GAMEPLAY & CO-PILOT ASSISTANCE", True, config.COLOR_CYAN), (mx + 32, sec_b_y))
+        pygame.draw.line(self.screen, (36, 56, 78), (mx + 30, sec_b_y + 18), (mx + mw - 30, sec_b_y + 18), 1)
+
+        # Row 4: Co-Pilot Mode
+        r4_y = sec_b_y + 26
+        mode = str(settings.get("copilot_mode", "BALANCED")).upper()
+        self.screen.blit(self.font_body.render("Co-Pilot Mode:", True, config.COLOR_WHITE), (mx + 36, r4_y))
+        if mode == "HARDCORE":
+            desc = "NO AI RESCUE! Timeout or errors cause actual crash (Expert)"
+            desc_col = config.COLOR_CRITICAL_RED
+        elif mode == "RELAXED":
+            desc = "30s decision window • Casual pacing & practice mode"
+            desc_col = config.COLOR_PRIMARY_GREEN
+        else:
+            desc = "20s decision window • AI rescue on timeout with score penalty"
+            desc_col = (255, 215, 65)
+        self.screen.blit(self.font_tiny.render(desc, True, desc_col), (mx + 36, r4_y + 18))
+
+        # Row 5: Trajectory Lines
+        r5_y = r4_y + 44
+        self.screen.blit(self.font_body.render("Flight Trajectory Paths:", True, config.COLOR_WHITE), (mx + 36, r5_y))
+        self.screen.blit(self.font_tiny.render("Draw green curved guidance path while routing aircraft", True, config.COLOR_TEXT_MUTED), (mx + 36, r5_y + 18))
+
+        # ---------------- Section C: Career Progress ----------------
+        sec_c_y = r5_y + 46
+        self.screen.blit(self.font_small.render("DATA & CAREER PROGRESS", True, config.COLOR_CYAN), (mx + 32, sec_c_y))
+        pygame.draw.line(self.screen, (36, 56, 78), (mx + 30, sec_c_y + 18), (mx + mw - 30, sec_c_y + 18), 1)
+
+        r6_y = sec_c_y + 26
+        if reset_confirm:
+            warn_msg = "WARNING: Clear all level stars & score history?"
+            self.screen.blit(self.font_body_bold.render(warn_msg, True, config.COLOR_CRITICAL_RED), (mx + 36, r6_y))
+            self.screen.blit(self.font_tiny.render("This cannot be undone! Click Confirm to restart Level 1.", True, config.COLOR_WARN_AMBER), (mx + 36, r6_y + 18))
+        else:
+            self.screen.blit(self.font_body.render("Reset Career Progress:", True, config.COLOR_WHITE), (mx + 36, r6_y))
+            self.screen.blit(self.font_tiny.render("Reset all stars & unlocked levels to start from Level 1", True, config.COLOR_TEXT_MUTED), (mx + 36, r6_y + 18))
+
+        # Bottom Toast Message (if present)
+        if toast_msg:
+            t_surf = self.font_small.render(toast_msg, True, config.COLOR_PRIMARY_GREEN)
+            self.screen.blit(t_surf, t_surf.get_rect(center=(box.centerx, my + mh - 58)))
 
     # =========================================================================
     # SCREEN 4: AI & DB STATS

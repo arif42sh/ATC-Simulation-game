@@ -1,0 +1,7 @@
+{
+  "master_audio": true,
+  "sfx_volume": 1.0,
+  "ambience": true,
+  "copilot_mode": "BALANCED",
+  "trajectory_lines": true
+}

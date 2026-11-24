@@ -7,9 +7,11 @@ Pause/0.5x-1x-2x Speed, Modals, Audio SFX, and AI & DB Stats Screen.
 """
 
 import asyncio
+import json
 import sys
 import math
 from typing import Optional, List, Dict, Any
+from pathlib import Path
 import pygame
 import config
 from config import GameState
@@ -21,6 +23,15 @@ from agent.agent import ATCAgent
 from .audio import SoundManager
 from .buttons import Button, ActionPanel
 from .display import DisplayRenderer
+
+SETTINGS_FILE = config.DATA_DIR / "settings.json"
+DEFAULT_SETTINGS: Dict[str, Any] = {
+    "master_audio": True,
+    "sfx_volume": 1.0,
+    "ambience": True,
+    "copilot_mode": "BALANCED",
+    "trajectory_lines": True,
+}
 
 
 class SkyATCGame:
@@ -73,10 +84,158 @@ class SkyATCGame:
         self.log_scroll = 0
         self.export_toast = ""
 
+        # Settings & Preference Management
+        self.settings: Dict[str, Any] = self._load_settings()
+        self.settings_open: bool = False
+        self.reset_confirm_open: bool = False
+        self.settings_toast: str = ""
+        self._apply_settings()
+
         if initial_level is not None:
             self.start_level(initial_level)
         else:
             self._switch_state(GameState.MAIN_MENU)
+
+    # -------------------------------------------------------------------------
+    # Settings Management
+    # -------------------------------------------------------------------------
+
+    def _load_settings(self) -> Dict[str, Any]:
+        settings = dict(DEFAULT_SETTINGS)
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        settings.update(data)
+            except Exception:
+                pass
+        return settings
+
+    def _save_settings(self):
+        try:
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, indent=2)
+        except Exception:
+            pass
+
+    def _apply_settings(self):
+        # 1. Master Audio
+        master_on = bool(self.settings.get("master_audio", True))
+        self.sound.set_master_volume(1.0 if master_on else 0.0)
+
+        # 2. SFX Volume
+        sfx_vol = float(self.settings.get("sfx_volume", 1.0))
+        self.sound.set_sfx_volume(sfx_vol)
+
+        # 3. Airport Ambience
+        amb_on = bool(self.settings.get("ambience", True))
+        self.sound.set_ambience_enabled(amb_on and master_on)
+
+        # 4. Trajectory Lines
+        tr_on = bool(self.settings.get("trajectory_lines", True))
+        if hasattr(self, "renderer"):
+            self.renderer.show_trajectory = tr_on
+
+        # 5. Co-Pilot Mode
+        mode = str(self.settings.get("copilot_mode", "BALANCED")).upper()
+        if mode == "HARDCORE":
+            self.agent.auto_takeover_enabled = False
+            config.HITL_TIMEOUT_SECONDS = 20.0
+        elif mode == "RELAXED":
+            self.agent.auto_takeover_enabled = True
+            self.agent.penalize_ai_takeover = True
+            config.HITL_TIMEOUT_SECONDS = 30.0
+        else:  # BALANCED
+            self.agent.auto_takeover_enabled = True
+            self.agent.penalize_ai_takeover = True
+            config.HITL_TIMEOUT_SECONDS = 20.0
+
+        if hasattr(self, "airbase"):
+            for ac in self.airbase.aircraft_fleet:
+                if ac.hitl_pending and ac.hitl_decision_timer > config.HITL_TIMEOUT_SECONDS:
+                    ac.hitl_decision_timer = config.HITL_TIMEOUT_SECONDS
+                    ac.hitl_initial_timer = config.HITL_TIMEOUT_SECONDS
+
+    def _open_settings(self):
+        self.settings_open = True
+        self.reset_confirm_open = False
+        self.settings_toast = ""
+        self.sound.play("click")
+        self._rebuild_buttons()
+
+    def _close_settings(self):
+        self.settings_open = False
+        self.reset_confirm_open = False
+        self.settings_toast = ""
+        self.sound.play("click")
+        self._save_settings()
+        self._apply_settings()
+        self._rebuild_buttons()
+
+    def _toggle_master_audio(self):
+        cur = self.settings.get("master_audio", True)
+        self.settings["master_audio"] = not cur
+        self.sound.play("click")
+        self._apply_settings()
+        self._rebuild_buttons()
+
+    def _cycle_sfx_volume(self):
+        cur = float(self.settings.get("sfx_volume", 1.0))
+        if cur > 0.75:
+            next_vol = 0.5
+        elif cur > 0.25:
+            next_vol = 0.0
+        else:
+            next_vol = 1.0
+        self.settings["sfx_volume"] = next_vol
+        self._apply_settings()
+        self.sound.play("click")
+        self._rebuild_buttons()
+
+    def _toggle_ambience(self):
+        cur = self.settings.get("ambience", True)
+        self.settings["ambience"] = not cur
+        self.sound.play("click")
+        self._apply_settings()
+        self._rebuild_buttons()
+
+    def _cycle_copilot_mode(self):
+        cur = str(self.settings.get("copilot_mode", "BALANCED")).upper()
+        modes = ["BALANCED", "HARDCORE", "RELAXED"]
+        idx = modes.index(cur) if cur in modes else 0
+        next_mode = modes[(idx + 1) % len(modes)]
+        self.settings["copilot_mode"] = next_mode
+        self.sound.play("click")
+        self._apply_settings()
+        self._rebuild_buttons()
+
+    def _toggle_trajectory_lines(self):
+        cur = self.settings.get("trajectory_lines", True)
+        self.settings["trajectory_lines"] = not cur
+        self.sound.play("click")
+        self._apply_settings()
+        self._rebuild_buttons()
+
+    def _on_request_reset_career(self):
+        self.reset_confirm_open = True
+        self.sound.play("warning")
+        self._rebuild_buttons()
+
+    def _on_cancel_reset_career(self):
+        self.reset_confirm_open = False
+        self.sound.play("click")
+        self._rebuild_buttons()
+
+    def _on_confirm_reset_career(self):
+        self.db_logger.reset_career_progress()
+        self._cached_global = self.db_logger.get_global_counters()
+        self._cached_prog = self.db_logger.get_level_progression()
+        self.selected_level = 1
+        self.reset_confirm_open = False
+        self.settings_toast = "Career progress reset to Level 1!"
+        self.sound.play("victory")
+        self._rebuild_buttons()
 
     # -------------------------------------------------------------------------
     # State & Button Setup
@@ -99,18 +258,94 @@ class SkyATCGame:
         cx = config.WINDOW_WIDTH // 2
         buttons: List[Button] = []
 
+        if self.settings_open:
+            mw, mh = 620, 500
+            mx = (config.WINDOW_WIDTH - mw) // 2
+            my = (config.WINDOW_HEIGHT - mh) // 2
+
+            # Section A: Audio & Sound Controls
+            # 1. Master Audio
+            m_on = bool(self.settings.get("master_audio", True))
+            m_txt = "ON" if m_on else "OFF"
+            m_col = (28, 150, 64) if m_on else (92, 42, 46)
+            m_hv = (38, 185, 82) if m_on else (135, 56, 60)
+            m_brd = config.COLOR_PRIMARY_GREEN if m_on else config.COLOR_CRITICAL_RED
+            buttons.append(Button(mx + 440, my + 88, 144, 32, m_txt, self._toggle_master_audio,
+                                  bg_color=m_col, hover_color=m_hv, border_color=m_brd, font_size=13))
+
+            # 2. SFX Volume
+            sfx_v = float(self.settings.get("sfx_volume", 1.0))
+            if sfx_v > 0.75:
+                sfx_txt, sfx_col, sfx_hv, sfx_brd = "100%", (28, 150, 64), (38, 185, 82), config.COLOR_PRIMARY_GREEN
+            elif sfx_v > 0.25:
+                sfx_txt, sfx_col, sfx_hv, sfx_brd = "50%", (36, 92, 168), (52, 122, 212), config.COLOR_CYAN
+            else:
+                sfx_txt, sfx_col, sfx_hv, sfx_brd = "MUTE (0%)", (54, 62, 74), (74, 84, 98), (92, 104, 120)
+            buttons.append(Button(mx + 440, my + 132, 144, 32, sfx_txt, self._cycle_sfx_volume,
+                                  bg_color=sfx_col, hover_color=sfx_hv, border_color=sfx_brd, font_size=13))
+
+            # 3. Airport Ambience
+            amb_on = bool(self.settings.get("ambience", True))
+            amb_txt = "ON" if amb_on else "OFF"
+            amb_col = (28, 150, 64) if amb_on else (92, 42, 46)
+            amb_hv = (38, 185, 82) if amb_on else (135, 56, 60)
+            amb_brd = config.COLOR_PRIMARY_GREEN if amb_on else config.COLOR_CRITICAL_RED
+            buttons.append(Button(mx + 440, my + 176, 144, 32, amb_txt, self._toggle_ambience,
+                                  bg_color=amb_col, hover_color=amb_hv, border_color=amb_brd, font_size=13))
+
+            # Section B: Gameplay & Co-Pilot Mode
+            # 4. Co-Pilot Mode
+            cp_mode = str(self.settings.get("copilot_mode", "BALANCED")).upper()
+            if cp_mode == "HARDCORE":
+                cp_col, cp_hv, cp_brd = (120, 36, 42), (160, 52, 60), config.COLOR_CRITICAL_RED
+            elif cp_mode == "RELAXED":
+                cp_col, cp_hv, cp_brd = (28, 138, 66), (40, 175, 86), config.COLOR_PRIMARY_GREEN
+            else:  # BALANCED
+                cp_col, cp_hv, cp_brd = (36, 92, 168), (52, 122, 212), config.COLOR_CYAN
+            buttons.append(Button(mx + 420, my + 248, 164, 32, cp_mode, self._cycle_copilot_mode,
+                                  bg_color=cp_col, hover_color=cp_hv, border_color=cp_brd, font_size=13))
+
+            # 5. Trajectory Lines
+            tr_on = bool(self.settings.get("trajectory_lines", True))
+            tr_txt = "ON" if tr_on else "OFF"
+            tr_col = (28, 150, 64) if tr_on else (54, 62, 74)
+            tr_hv = (38, 185, 82) if tr_on else (74, 84, 98)
+            tr_brd = config.COLOR_PRIMARY_GREEN if tr_on else (92, 104, 120)
+            buttons.append(Button(mx + 440, my + 292, 144, 32, tr_txt, self._toggle_trajectory_lines,
+                                  bg_color=tr_col, hover_color=tr_hv, border_color=tr_brd, font_size=13))
+
+            # Section C: Progress Management
+            # 6. Reset Career Data
+            if not self.reset_confirm_open:
+                buttons.append(Button(mx + 420, my + 364, 164, 32, "RESET CAREER", self._on_request_reset_career,
+                                      bg_color=(128, 48, 42), hover_color=(168, 62, 54), border_color=config.COLOR_CRITICAL_RED, font_size=12))
+            else:
+                buttons.append(Button(mx + 360, my + 364, 110, 32, "CONFIRM", self._on_confirm_reset_career,
+                                      bg_color=(160, 32, 36), hover_color=(200, 44, 48), border_color=config.COLOR_CRITICAL_RED, font_size=12))
+                buttons.append(Button(mx + 480, my + 364, 104, 32, "CANCEL", self._on_cancel_reset_career,
+                                      bg_color=(52, 62, 74), hover_color=(72, 84, 100), font_size=12))
+
+            # 7. Save & Close Modal
+            buttons.append(Button(mx + 220, my + mh - 44, 180, 34, "SAVE & CLOSE", self._close_settings,
+                                  bg_color=(28, 140, 72), hover_color=(38, 175, 92), border_color=config.COLOR_PRIMARY_GREEN, font_size=14))
+
+            self.action_panel.set_buttons(buttons)
+            return
+
         if self.current_state == GameState.MAIN_MENU:
-            bw, bh = 260, 48
+            bw, bh = 260, 46
             bx = cx - bw // 2
             buttons.extend([
-                Button(bx, 315, bw, bh, "START GAME", self._on_start_game,
+                Button(bx, 310, bw, bh, "START GAME", self._on_start_game,
                        bg_color=(28, 150, 64), hover_color=(38, 185, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=16),
-                Button(bx, 380, bw, bh, "RESUME GAME", self._on_resume_game,
+                Button(bx, 368, bw, bh, "RESUME GAME", self._on_resume_game,
                        bg_color=(56, 86, 118), hover_color=(76, 114, 152), border_color=config.COLOR_CYAN,
                        font_size=15, enabled=self.has_active_session),
-                Button(bx, 445, bw, bh, "SELECT LEVEL", lambda: self._switch_state(GameState.LEVEL_SELECT),
+                Button(bx, 426, bw, bh, "SELECT LEVEL", lambda: self._switch_state(GameState.LEVEL_SELECT),
                        bg_color=(36, 92, 168), hover_color=(52, 122, 212), border_color=config.COLOR_CYAN, font_size=15),
-                Button(bx, 510, bw, bh, "EXIT (DESKTOP)" if config.IS_WEB else "EXIT", self._on_exit,
+                Button(bx, 484, bw, bh, "SETTINGS ⚙", self._open_settings,
+                       bg_color=(38, 72, 102), hover_color=(52, 98, 138), border_color=config.COLOR_CYAN, font_size=15),
+                Button(bx, 542, bw, bh, "EXIT (DESKTOP)" if config.IS_WEB else "EXIT", self._on_exit,
                        bg_color=(92, 42, 46), hover_color=(135, 56, 60), border_color=config.COLOR_CRITICAL_RED,
                        font_size=14 if config.IS_WEB else 15, enabled=not config.IS_WEB),
             ])
@@ -159,7 +394,7 @@ class SkyATCGame:
             ])
 
         elif self.current_state == GameState.SIMULATION:
-            # Top bar controls: Pause (||), Speed (0.5x/1x/2x), SFX Mute, Help, Menu
+            # Top bar controls: Pause (||), Speed (0.5x/1x/2x), SFX Mute, Help, Settings, Menu
             p_lbl = "RESUME" if self.is_paused else "PAUSE"
             speed_lbl = "0.5x" if self.sim_speed < 0.9 else f"{int(self.sim_speed)}x"
             speed_bg = (28, 92, 96) if self.sim_speed < 0.9 else ((145, 96, 26) if self.sim_speed > 1.1 else (38, 64, 92))
@@ -174,11 +409,28 @@ class SkyATCGame:
                        bg_color=speed_bg, hover_color=speed_hv, border_color=speed_brd, font_size=12),
                 Button(997, 9, 60, 30, "MUTE" if self.sound.muted else "SFX", self._toggle_mute,
                        bg_color=(42, 56, 74), hover_color=(62, 82, 108), font_size=11),
-                Button(1070, 9, 72, 30, "HELP [F1]", self._show_tutorial,
+                Button(1067, 9, 72, 30, "HELP [F1]", self._show_tutorial,
                        bg_color=(42, 72, 58), hover_color=(58, 100, 72), border_color=(110, 170, 115), font_size=10),
-                Button(1260, 9, 84, 30, "MENU", self._return_to_menu_paused,
+                Button(1149, 9, 95, 30, "SETTINGS ⚙", self._open_settings,
+                       bg_color=(38, 72, 102), hover_color=(52, 98, 138), border_color=config.COLOR_CYAN, font_size=11),
+                Button(1254, 9, 84, 30, "MENU", self._return_to_menu_paused,
                        bg_color=(52, 62, 82), hover_color=(76, 92, 118), font_size=12),
             ])
+
+            if self.is_paused and not self.modal_state:
+                pw, ph = 380, 270
+                px = (config.WINDOW_WIDTH - pw) // 2
+                py = (config.WINDOW_HEIGHT - ph) // 2
+                buttons.extend([
+                    Button(px + 40, py + 78, 300, 36, "RESUME SIMULATION [P]", self._toggle_pause,
+                           bg_color=(28, 150, 64), hover_color=(38, 185, 82), border_color=config.COLOR_PRIMARY_GREEN, font_size=13),
+                    Button(px + 40, py + 122, 300, 36, "SETTINGS ⚙", self._open_settings,
+                           bg_color=(36, 92, 168), hover_color=(52, 122, 212), border_color=config.COLOR_CYAN, font_size=13),
+                    Button(px + 40, py + 166, 300, 36, "RESTART LEVEL", lambda: self.start_level(self.level_mgr.current_level),
+                           bg_color=(135, 82, 30), hover_color=(172, 105, 38), border_color=config.COLOR_WARN_AMBER, font_size=13),
+                    Button(px + 40, py + 210, 300, 36, "MAIN MENU", self._return_to_menu_paused,
+                           bg_color=(92, 42, 46), hover_color=(135, 56, 60), border_color=config.COLOR_CRITICAL_RED, font_size=13),
+                ])
 
             if self.modal_state:
                 if self.modal_state.get("type") == "TUTORIAL":
@@ -604,12 +856,20 @@ class SkyATCGame:
                 self.airbase, self.agent, self.level_mgr,
                 self.selected_aircraft, self.override_mode, self.drag_state,
                 self.is_paused, self.sim_speed, self.modal_state, self.sound.muted,
+                show_trajectory=bool(self.settings.get("trajectory_lines", True)),
             )
         elif self.current_state == GameState.AI_STATS:
             self.renderer.render_ai_stats(
                 self.airbase, self._cached_global,
                 self._cached_stats or self.db_logger.get_stats_dashboard_data(),
                 self.log_scroll, self.export_toast, mysql_ok, ai_ready,
+            )
+
+        if self.settings_open:
+            self.renderer.render_settings_modal(
+                self.settings,
+                reset_confirm=self.reset_confirm_open,
+                toast_msg=self.settings_toast,
             )
 
     def get_star_progress_ratio(self) -> float:
@@ -634,6 +894,11 @@ class SkyATCGame:
                 return
 
             if self.action_panel.handle_event(event):
+                continue
+
+            if self.settings_open:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self._close_settings()
                 continue
 
             if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:

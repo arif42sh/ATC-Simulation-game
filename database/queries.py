@@ -499,6 +499,24 @@ class DatabaseLogger:
             "best_by_level": best_by_level,
         }
 
+    def reset_career_progress(self):
+        """Resets all unlocked level progress, scores, and logs for a clean restart."""
+        if self._mem is not None:
+            self._mem.level_history.clear()
+            self._mem.reward_log.clear()
+            self._mem.event_log.clear()
+            self._mem.agent_decisions.clear()
+        else:
+            for tbl in ("level_history", "reward_log", "event_log", "feedback", "player_decisions"):
+                try:
+                    if getattr(self.db, "engine_type", "") == "sqlite":
+                        res = self.db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name=%s", (tbl,))
+                        if not res:
+                            continue
+                    self.db.execute(f"DELETE FROM {tbl}")
+                except Exception:
+                    pass
+
     def get_stats_dashboard_data(self) -> Dict[str, Any]:
         """Aggregates all metrics for the AI & DB STATS screen."""
         if self._mem is not None:
