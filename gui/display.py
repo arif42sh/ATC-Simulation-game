@@ -1548,7 +1548,7 @@ class DisplayRenderer:
             self.screen.blit(key_hint, key_hint.get_rect(center=key_bg.center))
             return
 
-        mw, mh = 640, 500
+        mw, mh = 540, 360
         mx, my = (config.WINDOW_WIDTH - mw) // 2, (config.WINDOW_HEIGHT - mh) // 2
         m_rect = pygame.Rect(mx, my, mw, mh)
         is_crash = modal.get("type") == "CRASH"
@@ -1556,27 +1556,25 @@ class DisplayRenderer:
 
         # Drop shadow & panel body
         pygame.draw.rect(self.screen, (8, 14, 22), (mx + 6, my + 8, mw, mh), border_radius=16)
-        pygame.draw.rect(self.screen, config.COLOR_SIDEBAR_BG, m_rect, border_radius=16)
+        pygame.draw.rect(self.screen, (16, 24, 36), m_rect, border_radius=16)
         pygame.draw.rect(self.screen, accent, m_rect, 2, border_radius=16)
 
         title = modal.get("title", "LEVEL SUMMARY")
         t_surf = self.font_title.render(title, True, accent)
         cx = mx + mw // 2
-        self.screen.blit(t_surf, t_surf.get_rect(center=(cx, my + 30)))
+        self.screen.blit(t_surf, t_surf.get_rect(center=(cx, my + 28)))
 
-        # Big 3-Star Visual Display (Classic Casual Game Style: Angry Birds / Flight Control)
+        # Big 3-Star Visual Display (Well spaced below title, NO overlap!)
         stars = modal.get("stars", 0 if is_crash else 1)
         star_configs = [
-            (cx - 62, my + 76, 18.0, 1),
-            (cx, my + 68, 25.0, 2),        # Center star is majestic and larger!
-            (cx + 62, my + 76, 18.0, 3),
+            (cx - 58, my + 86, 17.0, 1),
+            (cx, my + 80, 23.0, 2),        # Center star is majestic and larger
+            (cx + 58, my + 86, 17.0, 3),
         ]
 
         for sx, sy, s_rad, s_idx in star_configs:
             is_earned = (s_idx <= stars)
             if is_earned:
-                # Soft luminous golden glow
-                pygame.draw.circle(self.screen, (240, 190, 45), (int(sx), int(sy)), int(s_rad + 6))
                 # Outer shadow
                 self._draw_vector_star(self.screen, sx + 2, sy + 3, s_rad, (16, 22, 30))
                 # Golden metallic border
@@ -1598,56 +1596,46 @@ class DisplayRenderer:
             rating_txt = "MISSION FAILED • AIRFIELD COLLISION"
             rating_col = config.COLOR_CRITICAL_RED
         elif stars == 3:
-            rating_txt = "3 STARS • FLAWLESS MASTER ATC!"
+            rating_txt = "3 STARS • PERFECT LANDINGS!"
             rating_col = (255, 225, 65)
         elif stars == 2:
-            rating_txt = "2 STARS • SKILLED AIRFIELD CONTROLLER"
+            rating_txt = "2 STARS • GREAT JOB!"
             rating_col = (75, 225, 255)
         else:
             rating_txt = "1 STAR • LEVEL PASSED"
             rating_col = (130, 225, 160)
 
         r_surf = self.font_body_bold.render(rating_txt, True, rating_col)
-        self.screen.blit(r_surf, r_surf.get_rect(center=(cx, my + 112)))
+        self.screen.blit(r_surf, r_surf.get_rect(center=(cx, my + 128)))
 
-        sub_surf = self.font_small.render(modal.get("subtitle", ""), True, (215, 228, 238))
-        self.screen.blit(sub_surf, sub_surf.get_rect(center=(cx, my + 132)))
+        sub_surf = self.font_small.render(modal.get("subtitle", ""), True, (185, 205, 220))
+        self.screen.blit(sub_surf, sub_surf.get_rect(center=(cx, my + 150)))
 
-        # Summary metric strip
-        stats_box = pygame.Rect(mx + 28, my + 152, mw - 56, 54)
-        pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, stats_box, border_radius=8)
-        pygame.draw.rect(self.screen, config.COLOR_CARD_BORDER, stats_box, 1, border_radius=8)
+        # Sleek, clean Score Card (Zero spreadsheet clutter!)
+        score_box = pygame.Rect(mx + 36, my + 175, mw - 72, 80)
+        pygame.draw.rect(self.screen, (12, 18, 28), score_box, border_radius=10)
+        pygame.draw.rect(self.screen, (34, 52, 72), score_box, 1, border_radius=10)
+
         score = modal.get("score", 0)
         landings = modal.get("landings", 0)
         emerg = modal.get("emergencies", 0)
-        stat_str = f"PLAYER: {score:+d} PTS   |   LANDED: {landings}   |   EMERGENCIES: {emerg}"
-        self.screen.blit(self.font_mono_sm.render(stat_str, True, config.COLOR_CYAN), (stats_box.x + 18, stats_box.y + 8))
-        ai_str = f"AI RESCUES: {modal.get('ai_rescues', 0)}   |   AI SCORE (SEPARATE): {modal.get('ai_score', 0):+d} PTS"
-        self.screen.blit(self.font_mono_sm.render(ai_str, True, config.COLOR_WARN_AMBER), (stats_box.x + 18, stats_box.y + 30))
 
-        # Reward / Penalty Breakdown list
-        bd_rect = pygame.Rect(mx + 28, my + 216, mw - 56, 196)
-        pygame.draw.rect(self.screen, config.COLOR_CARD_DARK, bd_rect, border_radius=8)
-        self.screen.blit(self.font_header.render("PLAYER REWARD & PENALTY BREAKDOWN", True, config.COLOR_WHITE), (bd_rect.x + 14, bd_rect.y + 8))
+        # Left: Big Bold Score
+        sc_lbl = self.font_tiny.render("FINAL SCORE", True, config.COLOR_TEXT_MUTED)
+        self.screen.blit(sc_lbl, (score_box.x + 22, score_box.y + 14))
+        sc_val = self.font_title.render(f"{score:+d} PTS", True, config.COLOR_CYAN)
+        self.screen.blit(sc_val, (score_box.x + 22, score_box.y + 32))
 
-        by_event = modal.get("breakdown", {}).get("by_event", {})
-        ry = bd_rect.y + 34
-        if not by_event:
-            self.screen.blit(self.font_body.render("No reward events recorded.", True, config.COLOR_TEXT_DIM), (bd_rect.x + 14, ry))
-        else:
-            ranked_events = sorted(by_event.items(), key=lambda item: abs(item[1]["points"]), reverse=True)
-            visible_events = ranked_events[:5]
-            if len(ranked_events) > 5:
-                other_count = sum(info["count"] for _, info in ranked_events[5:])
-                other_points = sum(info["points"] for _, info in ranked_events[5:])
-                visible_events.append(("OTHER_EVENTS", {"count": other_count, "points": other_points}))
-            for ev_key, info in visible_events:
-                pts = info["points"]
-                col = config.COLOR_PRIMARY_GREEN if pts >= 0 else config.COLOR_CRITICAL_RED
-                label = ev_key.replace("_", " ").title()
-                self.screen.blit(self.font_body.render(f"{label} (x{info['count']})", True, config.COLOR_TEXT_MUTED), (bd_rect.x + 16, ry))
-                self.screen.blit(self.font_mono_sm.render(f"{pts:+d} PTS", True, col), (bd_rect.right - 100, ry))
-                ry += 22
+        # Divider
+        pygame.draw.line(self.screen, (34, 52, 72), (score_box.centerx, score_box.y + 12), (score_box.centerx, score_box.bottom - 12), 1)
+
+        # Right: Aircraft & Safety Status
+        l_lbl = self.font_body.render(f"AIRCRAFT LANDED: {landings}", True, config.COLOR_WHITE)
+        self.screen.blit(l_lbl, (score_box.centerx + 20, score_box.y + 18))
+        safe_str = "SAFETY: 100% PERFECT" if emerg == 0 else f"SAFETY: {emerg} EMERGENCIES SAFE"
+        safe_col = config.COLOR_PRIMARY_GREEN if emerg == 0 else config.COLOR_WARN_AMBER
+        s_lbl = self.font_body.render(safe_str, True, safe_col)
+        self.screen.blit(s_lbl, (score_box.centerx + 20, score_box.y + 44))
 
     # =========================================================================
     # SCREEN 4: AI & DB STATS

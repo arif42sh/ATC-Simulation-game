@@ -50,6 +50,18 @@ class TestDisplayRendering(unittest.TestCase):
         self.renderer._draw_hud_reticle(150.0, 150.0, 22.0, (255, 215, 65))
         self.renderer._draw_plane_sprite(150.0, 150.0, 90.0, (220, 230, 240))
 
+    def test_modal_overlay_rendering(self):
+        modal = {
+            "type": "COMPLETE",
+            "title": "LEVEL 01 COMPLETE!",
+            "stars": 3,
+            "subtitle": "All 4 incoming aircraft landed safely (EASY).",
+            "score": 930,
+            "landings": 4,
+            "emergencies": 0,
+        }
+        self.renderer._render_modal_overlay(modal)
+
 
 if __name__ == "__main__":
     unittest.main()
