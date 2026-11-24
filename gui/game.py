@@ -39,7 +39,7 @@ class SkyATCGame:
         self.airbase = Airbase(level_id=1)
         self.level_mgr = LevelManager(self.airbase)
         self.agent = ATCAgent(self.airbase, self.db_logger)
-        self.agent.auto_takeover_enabled = False  # Casual mode: player retains command
+        self.agent.auto_takeover_enabled = True  # Co-pilot takeover triggers automatically when 30s timer expires
         self.renderer = DisplayRenderer(self.screen)
         self.sound = SoundManager()
         self.action_panel = ActionPanel()

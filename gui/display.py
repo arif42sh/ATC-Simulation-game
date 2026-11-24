@@ -174,13 +174,16 @@ class DisplayRenderer:
             l_surf = self.font_mono.render(f"LANDED: {landed_count:02d}", True, (228, 240, 212))
             self.screen.blit(l_surf, (110, 16))
 
-            # 3. Score (X=228)
+            # 3. Score (X=215)
             s_col = config.COLOR_WHITE if score_val >= 0 else config.COLOR_CRITICAL_RED
             s_surf = self.font_mono.render(f"{score_label}: {score_val:05d}", True, s_col)
-            self.screen.blit(s_surf, (228, 16))
+            self.screen.blit(s_surf, (215, 16))
 
-            # 4. Live 3-Star Rating Progress Bar (X=345)
-            bx, by, bw, bh = 345, 18, 100, 13
+            # 4. Live 3-Star Rating Progress Bar (X=325)
+            r_lbl = self.font_tiny.render("RATING", True, config.COLOR_TEXT_MUTED)
+            self.screen.blit(r_lbl, (325, 18))
+
+            bx, by, bw, bh = 370, 18, 70, 13
             pygame.draw.rect(self.screen, (16, 26, 36), (bx, by, bw, bh), border_radius=4)
             pygame.draw.rect(self.screen, (48, 86, 62), (bx, by, bw, bh), 1, border_radius=4)
 
@@ -196,19 +199,19 @@ class DisplayRenderer:
 
             col1 = star_gold if star_ratio >= 0.35 else star_dim
             out1 = star_gold_hi if star_ratio >= 0.35 else star_dim_out
-            self._draw_vector_star(self.screen, bx + bw + 12, by + 6, 6.0, col1, out1)
+            self._draw_vector_star(self.screen, bx + bw + 10, by + 6, 5.5, col1, out1)
 
             col2 = star_gold if star_ratio >= 0.70 else star_dim
             out2 = star_gold_hi if star_ratio >= 0.70 else star_dim_out
-            self._draw_vector_star(self.screen, bx + bw + 26, by + 6, 6.0, col2, out2)
+            self._draw_vector_star(self.screen, bx + bw + 23, by + 6, 5.5, col2, out2)
 
             col3 = star_gold if star_ratio >= 0.95 else star_dim
             out3 = star_gold_hi if star_ratio >= 0.95 else star_dim_out
-            self._draw_vector_star(self.screen, bx + bw + 42, by + 6, 7.5, col3, out3)
+            self._draw_vector_star(self.screen, bx + bw + 38, by + 6, 7.0, col3, out3)
 
-            # 5. 30s Decision Countdown Timer Badge (X=525)
+            # 5. 30s Decision Countdown Timer Badge (X=515)
             tw, th = 160, 32
-            tx, ty = 525, 8
+            tx, ty = 515, 8
             rem_s = max(0.0, decision_remaining)
             timer_pct = min(1.0, rem_s / max(1.0, decision_initial))
 
@@ -303,11 +306,17 @@ class DisplayRenderer:
         pygame.draw.polygon(self.screen, config.COLOR_TARMAC, tarmac_pts)
         pygame.draw.polygon(self.screen, config.COLOR_TARMAC_BORDER, tarmac_pts, 2)
 
-        # Helipad (H)
-        pygame.draw.circle(self.screen, (72, 70, 66), (hx, hy), hr)
-        pygame.draw.circle(self.screen, config.COLOR_HELIPAD_RING, (hx, hy), h_ring, 3)
-        h_lbl = h_font.render("H", True, config.COLOR_HELIPAD_RING)
-        self.screen.blit(h_lbl, h_lbl.get_rect(center=(hx, hy)))
+        # Terminal Apron Parking Stand (STAND 1)
+        stand_rect = pygame.Rect(hx - 28, hy - 26, 56, 52)
+        pygame.draw.rect(self.screen, (68, 66, 62), stand_rect, border_radius=4)
+        pygame.draw.rect(self.screen, (190, 165, 55), stand_rect, 2, border_radius=4)
+        # Taxi lead-in yellow line
+        pygame.draw.line(self.screen, (215, 185, 45), (hx, hy - 26), (hx, hy + 14), 2)
+        # Stop bar line
+        pygame.draw.line(self.screen, (215, 185, 45), (hx - 12, hy + 6), (hx + 12, hy + 6), 3)
+        # STAND 1 label
+        s_lbl = self.font_tiny.render("STAND 1", True, (220, 195, 80))
+        self.screen.blit(s_lbl, (hx - s_lbl.get_width() // 2, hy + 12))
 
         # Draw each runway cleanly along its angle
         for rwy in airbase.runways.values():
@@ -372,8 +381,18 @@ class DisplayRenderer:
                 qy = py + rwy.uy * 10.0
                 pygame.draw.line(self.screen, config.COLOR_RUNWAY_MARKING, (px, py), (qx, qy), 2)
 
+        # Runway identification numbers on asphalt past threshold keys
+        rwy_num = rwy.id.replace("RWY ", "").strip()
+        num_str = f"0{rwy_num}" if len(rwy_num) == 1 else rwy_num
+        num_surf = self.font_mono_sm.render(num_str, True, config.COLOR_RUNWAY_MARKING)
+        angle_deg = math.degrees(math.atan2(-rwy.uy, rwy.ux))
+        rot_surf = pygame.transform.rotate(num_surf, angle_deg)
+        nx_pos = rwy.start_x + rwy.ux * 28.0
+        ny_pos = rwy.start_y + rwy.uy * 28.0
+        self.screen.blit(rot_surf, rot_surf.get_rect(center=(int(nx_pos), int(ny_pos))))
+
         # Centerline dashes
-        t = 28.0
+        t = 42.0
         while t < rwy.pixel_length - 28.0:
             p1 = (rwy.start_x + rwy.ux * t, rwy.start_y + rwy.uy * t)
             p2 = (rwy.start_x + rwy.ux * (t + 14.0), rwy.start_y + rwy.uy * (t + 14.0))
@@ -422,6 +441,31 @@ class DisplayRenderer:
         pygame.draw.rect(self.screen, (42, 64, 82), pill, 1, border_radius=3)
         self.screen.blit(lbl, (bx + 5, by + 1))
 
+    def _draw_hud_reticle(
+        self,
+        x: float,
+        y: float,
+        size: float,
+        color: Tuple[int, int, int],
+        arm_len: float = 6.0,
+        line_width: int = 2,
+    ):
+        """Draws 4 modern aviation corner brackets [ ] around (x, y)."""
+        s = size
+        a = arm_len
+        # Top-left
+        pygame.draw.line(self.screen, color, (x - s, y - s), (x - s + a, y - s), line_width)
+        pygame.draw.line(self.screen, color, (x - s, y - s), (x - s, y - s + a), line_width)
+        # Top-right
+        pygame.draw.line(self.screen, color, (x + s, y - s), (x + s - a, y - s), line_width)
+        pygame.draw.line(self.screen, color, (x + s, y - s), (x + s, y - s + a), line_width)
+        # Bottom-left
+        pygame.draw.line(self.screen, color, (x - s, y + s), (x - s + a, y + s), line_width)
+        pygame.draw.line(self.screen, color, (x - s, y + s), (x - s, y + s - a), line_width)
+        # Bottom-right
+        pygame.draw.line(self.screen, color, (x + s, y + s), (x + s - a, y + s), line_width)
+        pygame.draw.line(self.screen, color, (x + s, y + s), (x + s, y + s - a), line_width)
+
     def _draw_plane_sprite(
         self,
         x: float,
@@ -430,22 +474,44 @@ class DisplayRenderer:
         color: Tuple[int, int, int],
         scale: float = 1.0,
     ):
-        """Draws crisp top-down aircraft silhouette matching mockup style."""
+        """Draws crisp top-down aircraft silhouette with drop shadow and nav lights."""
         rad = math.radians(heading_deg)
         c, s = math.cos(rad), math.sin(rad)
 
-        def pt(fx: float, fy: float) -> Tuple[int, int]:
-            fx *= scale
-            fy *= scale
-            return (int(x + fx * c - fy * s), int(y + fx * s + fy * c))
+        def pt(fx: float, fy: float, ox: float = 0.0, oy: float = 0.0) -> Tuple[int, int]:
+            rx = fx * scale
+            ry = fy * scale
+            return (int(x + ox + rx * c - ry * s), int(y + oy + rx * s + ry * c))
 
+        # 1. 3D Elevation Drop Shadow (cast southeast)
+        sh_pts = [
+            pt(13, 0, 4, 5), pt(5, 3, 4, 5), pt(-1, 14, 4, 5), pt(-4, 13, 4, 5), pt(-5, 3, 4, 5),
+            pt(-11, 6, 4, 5), pt(-13, 0, 4, 5), pt(-11, -6, 4, 5), pt(-5, -3, 4, 5),
+            pt(-4, -13, 4, 5), pt(-1, -14, 4, 5), pt(5, -3, 4, 5),
+        ]
+        pygame.draw.polygon(self.screen, (12, 20, 28), sh_pts)
+
+        # 2. Fuselage & Wings
         pts = [
             pt(13, 0), pt(5, 3), pt(-1, 14), pt(-4, 13), pt(-5, 3),
             pt(-11, 6), pt(-13, 0), pt(-11, -6), pt(-5, -3),
             pt(-4, -13), pt(-1, -14), pt(5, -3),
         ]
         pygame.draw.polygon(self.screen, color, pts)
-        pygame.draw.polygon(self.screen, (22, 30, 40), pts, 2)
+        pygame.draw.polygon(self.screen, (20, 28, 38), pts, 2)
+
+        # 3. Cockpit windshield
+        cp = pt(6, 0)
+        pygame.draw.circle(self.screen, (40, 60, 80), cp, max(1, int(2 * scale)))
+
+        # 4. Navigation wingtip lights & tail strobe
+        p_port = pt(-1, -14)      # Port (left) = Red
+        pygame.draw.circle(self.screen, (245, 55, 55), p_port, 2)
+        p_star = pt(-1, 14)       # Starboard (right) = Green
+        pygame.draw.circle(self.screen, (55, 235, 95), p_star, 2)
+        if math.sin(self.pulse_phase * 4.0) > 0.3:
+            p_tail = pt(-13, 0)   # White strobe
+            pygame.draw.circle(self.screen, (255, 255, 255), p_tail, 2)
 
     def _draw_dotted_line(
         self,
@@ -464,6 +530,43 @@ class DisplayRenderer:
         for i in range(0, steps + 1, 2):
             t = i / float(steps)
             px = int(x1 + t * (x2 - x1))
+            py = int(y1 + t * (y2 - y1))
+            pygame.draw.circle(self.screen, color, (px, py), radius)
+
+    def _draw_flow_approach_path(
+        self,
+        p1: Tuple[float, float],
+        p2: Tuple[float, float],
+        color: Tuple[int, int, int],
+        spacing: float = 18.0,
+    ):
+        """Draws animated chevrons >> >> >> flowing towards destination threshold."""
+        x1, y1 = p1
+        x2, y2 = p2
+        dist = math.hypot(x2 - x1, y2 - y1)
+        if dist < 12.0:
+            return
+
+        ux = (x2 - x1) / dist
+        uy = (y2 - y1) / dist
+        nx, ny = -uy, ux
+
+        # Center trackline in muted tone
+        dim_col = (color[0] // 3, color[1] // 3, color[2] // 3)
+        pygame.draw.line(self.screen, dim_col, (int(x1), int(y1)), (int(x2), int(y2)), 1)
+
+        # Marching offset towards destination
+        flow_offset = (self.pulse_phase * 26.0) % spacing
+        d = flow_offset
+        while d < dist - 14.0:
+            cx = x1 + ux * d
+            cy = y1 + uy * d
+            w1x = cx - ux * 5.0 + nx * 4.0
+            w1y = cy - uy * 5.0 + ny * 4.0
+            w2x = cx - ux * 5.0 - nx * 4.0
+            w2y = cy - uy * 5.0 - ny * 4.0
+            pygame.draw.lines(self.screen, color, False, [(w1x, w1y), (cx, cy), (w2x, w2y)], 2)
+            d += spacing
             py = int(y1 + t * (y2 - y1))
             pygame.draw.circle(self.screen, color, (px, py), radius)
 
@@ -657,7 +760,7 @@ class DisplayRenderer:
                 if rwy:
                     path_col = config.COLOR_CRITICAL_RED if ac.is_emergency() else config.COLOR_CYAN
                     target = (rwy.approach_x, rwy.approach_y) if ac.status == FlightStatus.INTERCEPT else (rwy.start_x, rwy.start_y)
-                    self._draw_dotted_line((ac.x, ac.y), target, path_col, spacing=8)
+                    self._draw_flow_approach_path((ac.x, ac.y), target, path_col)
 
         # Draw Drag-and-Draw Manual Override Preview Path
         if drag_state and drag_state.get("aircraft"):
@@ -759,23 +862,21 @@ class DisplayRenderer:
 
         pulse = 0.5 + 0.5 * math.sin(self.pulse_phase * 2.5)
 
-        # 1. Golden beacon around priority aircraft
+        # 1. Sleek HUD corner reticle around priority aircraft (no concentric circles)
         gold_col = (255, 215, 65)
-        beacon_r = int(24 + 6 * pulse)
-        pygame.draw.circle(self.screen, gold_col, (int(ac.x), int(ac.y)), beacon_r, 2)
-        pygame.draw.circle(self.screen, (255, 235, 120), (int(ac.x), int(ac.y)), beacon_r + 4, 1)
+        self._draw_hud_reticle(ac.x, ac.y, size=int(22 + 3 * pulse), color=gold_col, arm_len=7)
 
-        # 2. Glowing animated dotted glide path to the actual runway threshold
+        # 2. Glowing animated flowing chevrons to the actual runway threshold
         guide_col = (
-            min(255, int(50 + 205 * pulse)),
+            min(255, int(60 + 195 * pulse)),
             min(255, int(220 + 35 * pulse)),
-            min(255, int(120 + 135 * pulse)),
+            min(255, int(130 + 125 * pulse)),
         )
         target_pos = (rwy.start_x, rwy.start_y)
-        self._draw_dotted_line((ac.x, ac.y), target_pos, guide_col, spacing=10, radius=2)
+        self._draw_flow_approach_path((ac.x, ac.y), target_pos, guide_col)
 
-        # 3. Soft glowing landing bracket directly on the runway entrance
-        pygame.draw.circle(self.screen, guide_col, (int(rwy.start_x), int(rwy.start_y)), int(14 + 4 * pulse), 2)
+        # 3. Soft glowing landing target reticle directly on the runway entrance
+        self._draw_hud_reticle(rwy.start_x, rwy.start_y, size=int(14 + 3 * pulse), color=guide_col, arm_len=5)
 
     def _draw_radio_comms_bubble(self, co_pilot_target: Optional[Tuple[Any, Any]]):
         if not co_pilot_target:
@@ -785,7 +886,7 @@ class DisplayRenderer:
             return
 
         is_em = ac.is_emergency()
-        bw, bh = 380, 28
+        bw, bh = 440, 28
         bx = (config.WINDOW_WIDTH - bw) // 2
         by = 54
 
@@ -816,12 +917,11 @@ class DisplayRenderer:
 
         if is_em:
             pulse_r = int(23 + 4 * math.sin(self.pulse_phase * 1.4))
-            pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ax, ay), pulse_r, 3)
-            pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ax, ay), pulse_r - 8, 1)
-            # Exclamation markers matching mockup
-            for ex, ey in ((ax - 24, ay - 20), (ax + 22, ay + 18)):
-                pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ex, ey), 7)
-                self.screen.blit(self.font_tiny.render("!", True, config.COLOR_WHITE), (ex - 2, ey - 7))
+            pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ax, ay), pulse_r, 2)
+            # Exclamation marker matching mockup
+            ex, ey = ax + 20, ay - 18
+            pygame.draw.circle(self.screen, config.COLOR_CRITICAL_RED, (ex, ey), 7)
+            self.screen.blit(self.font_tiny.render("!", True, config.COLOR_WHITE), (ex - 2, ey - 7))
             plane_col = (218, 45, 52)
         elif ac.fuel_level < 40.0:
             plane_col = (232, 178, 38)
@@ -830,50 +930,64 @@ class DisplayRenderer:
         else:
             plane_col = (224, 232, 240)
 
-        # Circular fuel gauge ring around plane
-        fuel_r = 18 if ac.aircraft_size != "HEAVY" else 22
-        fuel_rect = pygame.Rect(ax - fuel_r, ay - fuel_r, fuel_r * 2, fuel_r * 2)
-        pygame.draw.circle(self.screen, (24, 38, 56), (ax, ay), fuel_r, 2)
-        sweep_rad = (ac.fuel_level / 100.0) * (2.0 * math.pi)
-        if sweep_rad > 0.05:
-            pygame.draw.arc(self.screen, fuel_col, fuel_rect, -math.pi / 2, -math.pi / 2 + sweep_rad, 2)
-
+        # Draw HUD corner brackets if selected (no concentric circles)
         if is_selected:
-            pygame.draw.circle(self.screen, config.COLOR_CYAN, (ax, ay), 26, 2)
+            self._draw_hud_reticle(ax, ay, size=22, color=config.COLOR_CYAN, arm_len=7)
 
         scale = 1.25 if ac.aircraft_size == "HEAVY" else (0.95 if ac.aircraft_size == "SMALL" else 1.1)
         self._draw_plane_sprite(ac.x, ac.y, ac.heading, plane_col, scale=scale)
 
-        # Minimal sleek callsign tag (hides noisy telemetry by default)
+        # Minimal sleek callsign tag with fuel % (centered underneath)
         sym = self._get_emergency_symbol(ac)
         if is_em:
-            tag_txt = f"{ac.flight_id} [{sym or 'ALERT'} {int(ac.fuel_level)}%]"
-            tag_col = (255, 115, 115)
+            tag_txt = f"{ac.flight_id} • {int(ac.fuel_level)}% [{sym or 'ALERT'}]"
+            tag_col = (255, 120, 120)
+            tag_bg = (54, 18, 22)
+            tag_border = config.COLOR_CRITICAL_RED
         elif is_selected:
-            tag_txt = f"{ac.flight_id} {int(ac.fuel_level)}% {ac.model}"
+            tag_txt = f"{ac.flight_id} • {int(ac.fuel_level)}% {ac.model}"
             tag_col = config.COLOR_CYAN
+            tag_bg = (14, 28, 44)
+            tag_border = config.COLOR_CYAN
         else:
-            tag_txt = ac.flight_id
-            tag_col = config.COLOR_WHITE
+            tag_txt = f"{ac.flight_id} • {int(ac.fuel_level)}%"
+            tag_col = fuel_col if ac.fuel_level < 50.0 else config.COLOR_WHITE
+            tag_bg = (16, 24, 36)
+            tag_border = (38, 54, 76)
 
         lbl = self.font_tiny.render(tag_txt, True, tag_col)
-        bg_w = lbl.get_width() + 8
-        tag_x = ax + 16
+        bg_w = lbl.get_width() + 10
+        tag_x = ax - bg_w // 2
+        tag_y = ay + 18
         if tag_x + bg_w > config.CANVAS_WIDTH - 6:
             tag_x = max(6, ax - 16 - bg_w)
-        tag_y = max(config.TOP_BAR_HEIGHT + 4, min(config.WINDOW_HEIGHT - 54, ay - 22))
+        elif tag_x < 6:
+            tag_x = 6
+        tag_y = max(config.TOP_BAR_HEIGHT + 4, min(config.WINDOW_HEIGHT - 24, tag_y))
+
         bg = pygame.Rect(tag_x, tag_y, bg_w, 16)
-        pygame.draw.rect(self.screen, (14, 24, 38), bg, border_radius=3)
-        pygame.draw.rect(self.screen, (34, 52, 74), bg, 1, border_radius=3)
-        self.screen.blit(lbl, (bg.x + 4, bg.y + 1))
+        pygame.draw.rect(self.screen, tag_bg, bg, border_radius=3)
+        pygame.draw.rect(self.screen, tag_border, bg, 1, border_radius=3)
+        self.screen.blit(lbl, (bg.x + 5, bg.y + 1))
 
     def _draw_event_banner(self, banner: Dict[str, Any]):
-        bw, bh = 380, 28
+        bw, bh = 440, 28
         bx = (config.WINDOW_WIDTH - bw) // 2
         by = 54
         b_type = banner.get("type", "NORMAL")
         border = config.COLOR_CRITICAL_RED if b_type == "EMERGENCY" else config.COLOR_CYAN
         bg = (56, 14, 18, 230) if b_type == "EMERGENCY" else (16, 28, 44, 230)
+
+        comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        comm_surf.fill(bg)
+        self.screen.blit(comm_surf, (bx, by))
+        pygame.draw.rect(self.screen, border, (bx, by, bw, bh), 1, border_radius=5)
+
+        title = banner.get("title", "")
+        msg = banner.get("message", "")
+        full_txt = f"{title}: {msg}" if title else msg
+        lbl = self.font_tiny.render(full_txt[:55], True, config.COLOR_WHITE)
+        self.screen.blit(lbl, (bx + (bw - lbl.get_width()) // 2, by + 6))
 
         comm_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
         comm_surf.fill(bg)

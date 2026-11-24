@@ -28,8 +28,8 @@ class TestGameplayControls(unittest.TestCase):
         self.assertEqual(self.game._calculate_stars(crashed=False, score=110, max_score=200), 2)
         self.assertEqual(self.game._calculate_stars(crashed=False, score=40, max_score=200), 1)
 
-    def test_interactive_auto_takeover_disabled(self):
-        self.assertFalse(self.game.agent.auto_takeover_enabled)
+    def test_interactive_auto_takeover_enabled(self):
+        self.assertTrue(self.game.agent.auto_takeover_enabled)
 
 
 if __name__ == "__main__":
